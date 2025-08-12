@@ -83,7 +83,7 @@ def run_process(config: dict, seed: int):
         "python", "02_process.py",
         "--input", raw_data_file,
         "--output-dir", output_dir,
-        "--config", "configs/data_config.yaml",
+        "--config", "data_config",
         "--seed", str(seed)
     ]
     run_step(cmd)
@@ -97,7 +97,7 @@ def run_graphs(config: dict, seed: int):
     cmd = [
         "python", "03_graphs.py",
         "--output-dir", output_dir,
-        "--config", "configs/graph_config.yaml",
+        "--config", "graph_config",
         "--seed", str(seed)
     ]
     run_step(cmd)
@@ -115,7 +115,7 @@ def run_train(config: dict, seed: int):
         "python", "04_train.py",
         "--data-dir", data_dir,
         "--output-dir", model_dir,
-        "--config", "configs/model_config.yaml",
+        "--config", "model_config",
         "--seed", str(seed)
     ]
     if os.path.exists(graph_dir):
@@ -137,7 +137,7 @@ def run_evaluate(config: dict, seed: int):
         "--model-path", model_path,
         "--data-path", data_path,
         "--output-dir", output_dir,
-        "--config", "configs/pipeline_config.yaml",
+        "--config", "pipeline_config",
         "--seed", str(seed)
     ]
     run_step(cmd)
@@ -153,7 +153,7 @@ def main():
         choices=['all', 'ingest', 'process', 'graphs', 'train', 'evaluate'],
         help="Pipeline steps to run."
     )
-    parser.add_argument("--config", type=str, default="configs/pipeline_config.yaml", help="Main pipeline configuration file.")
+    parser.add_argument("--config", type=str, default="pipeline_config", help="Main pipeline configuration file (without path or extension).")
     parser.add_argument("--seed", type=int, default=42, help="Global random seed.")
     
     args = parser.parse_args()
