@@ -1,0 +1,240 @@
+# Pipeline configuration for single-cell perturbation analysis
+# Configuration for data splitting, feature selection, and output paths
+
+# Data splitting configuration
+data_splitting:
+  # Random seed for reproducible splitting
+  random_seed: 42
+  
+  # Splitting strategy
+  split_method: "stratified"             # Options: "random", "stratified", "guide_balanced", "temporal"
+  
+  # Split proportions (must sum to 1.0)
+  train_fraction: 0.7                    # Training set proportion
+  val_fraction: 0.15                     # Validation set proportion  
+  test_fraction: 0.15                    # Test set proportion
+  
+  # Stratification parameters
+  stratify_by: "guide_identity"          # Column to stratify by
+  min_samples_per_stratum: 10            # Minimum samples per stratum
+  
+  # Cross-validation settings
+  use_cross_validation: false            # Whether to use cross-validation
+  cv_folds: 5                           # Number of CV folds
+  cv_strategy: "stratified"             # CV strategy: "kfold", "stratified", "group"
+  
+  # Hold-out validation
+  use_holdout_validation: true          # Whether to use separate holdout set
+  holdout_fraction: 0.1                # Fraction for holdout validation
+
+# Feature selection configuration
+feature_selection:
+  # Feature selection method
+  method: "highly_variable_genes"       # Options: "highly_variable_genes", "differential_expression", "variance_threshold", "mutual_information", "pca", "all"
+  
+  # Number of features to select
+  n_features: 2000                      # Number of top features to select
+  
+  # Highly variable genes parameters
+  hvg_params:
+    method: "seurat_v3"                 # HVG method: "seurat", "seurat_v3", "cell_ranger"
+    min_mean: 0.0125                    # Minimum mean expression
+    max_mean: 3.0                       # Maximum mean expression
+    min_disp: 0.5                       # Minimum dispersion
+    n_top_genes: 2000                   # Number of top HVGs
+    
+  # Differential expression parameters
+  de_params:
+    method: "wilcoxon"                  # DE method: "wilcoxon", "t-test", "logreg"
+    min_fold_change: 1.5                # Minimum fold change
+    max_pval: 0.05                      # Maximum p-value
+    min_pct: 0.1                        # Minimum percentage of cells expressing
+    
+  # Variance threshold parameters
+  variance_params:
+    threshold: 0.0                      # Variance threshold (0 removes constant features)
+    
+  # Mutual information parameters
+  mi_params:
+    discrete_features: false            # Whether features are discrete
+    n_neighbors: 3                      # Number of neighbors for MI estimation
+    
+  # PCA parameters
+  pca_params:
+    n_components: 50                    # Number of PCA components
+    explained_variance_threshold: 0.95   # Minimum explained variance to retain
+
+# Output paths and file organization
+output_paths:
+  # Base directories
+  base_output_dir: "outputs"            # Base output directory
+  models_dir: "outputs/models"          # Directory for trained models
+  evaluation_dir: "outputs/evaluation"  # Directory for evaluation results
+  figures_dir: "outputs/figures"        # Directory for generated figures
+  logs_dir: "outputs/logs"              # Directory for log files
+  
+  # Data output paths
+  processed_data_dir: "data/processed"  # Directory for processed data
+  intermediate_dir: "data/intermediate" # Directory for intermediate results
+  cache_dir: "data/cache"               # Directory for cached files
+  
+  # File naming conventions
+  timestamp_format: "%Y%m%d_%H%M%S"     # Timestamp format for file names
+  use_timestamps: true                  # Whether to add timestamps to output files
+  
+  # Experiment organization
+  experiment_name: "discrepancy_vae"    # Base experiment name
+  run_id: null                          # Specific run ID (auto-generated if null)
+  
+  # File formats
+  model_format: "pytorch"               # Model format: "pytorch", "onnx", "pickle"
+  data_format: "h5ad"                   # Data format: "h5ad", "zarr", "csv"
+  figure_format: "png"                  # Figure format: "png", "pdf", "svg"
+  
+  # Compression settings
+  compression: "gzip"                   # Compression: "gzip", "lz4", "zstd", null
+  compression_level: 6                  # Compression level (1-9)
+
+# Pipeline execution configuration
+execution:
+  # Pipeline steps to run
+  steps_to_run:                         # List of pipeline steps to execute
+    - "ingest"
+    - "process" 
+    - "graphs"
+    - "train"
+    - "evaluate"
+  
+  # Step dependencies
+  step_dependencies:                    # Dependencies between pipeline steps
+    process: ["ingest"]
+    graphs: ["process"]
+    train: ["process", "graphs"]
+    evaluate: ["train"]
+  
+  # Execution mode
+  execution_mode: "sequential"          # Options: "sequential", "parallel", "distributed"
+  max_parallel_jobs: 4                  # Maximum parallel jobs (if parallel mode)
+  
+  # Error handling
+  continue_on_error: false              # Whether to continue pipeline on step failure
+  retry_failed_steps: true             # Whether to retry failed steps
+  max_retries: 3                        # Maximum number of retries per step
+  
+  # Resource management
+  memory_limit: "16GB"                  # Memory limit per step
+  gpu_memory_limit: "8GB"               # GPU memory limit
+  timeout_minutes: 120                  # Timeout per step in minutes
+
+# Logging and monitoring configuration
+logging:
+  # Log levels
+  log_level: "INFO"                     # Log level: "DEBUG", "INFO", "WARNING", "ERROR"
+  console_log_level: "INFO"             # Console log level
+  file_log_level: "DEBUG"               # File log level
+  
+  # Log formatting
+  log_format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  date_format: "%Y-%m-%d %H:%M:%S"
+  
+  # Log file management
+  log_file_rotation: true               # Whether to rotate log files
+  max_log_file_size: "10MB"             # Maximum log file size
+  backup_count: 5                       # Number of backup log files to keep
+  
+  # Progress tracking
+  show_progress_bars: true              # Whether to show progress bars
+  progress_bar_style: "tqdm"            # Progress bar style: "tqdm", "rich"
+  
+  # Experiment tracking
+  use_mlflow: false                     # Whether to use MLflow tracking
+  mlflow_tracking_uri: null             # MLflow tracking server URI
+  mlflow_experiment_name: "discrepancy_vae"  # MLflow experiment name
+  
+  use_wandb: false                      # Whether to use Weights & Biases
+  wandb_project: "discrepancy-vae"      # W&B project name
+  wandb_entity: null                    # W&B entity (team/user)
+
+# Reproducibility configuration
+reproducibility:
+  # Global random seed
+  global_seed: 42                       # Global random seed for all operations
+  
+  # Deterministic behavior
+  deterministic: true                   # Whether to enforce deterministic behavior
+  benchmark_mode: false                 # Whether to use benchmark mode (faster but non-deterministic)
+  
+  # Environment reproducibility
+  save_environment: true                # Whether to save environment information
+  save_git_info: true                   # Whether to save git commit information
+  save_system_info: true                # Whether to save system information
+  
+  # Data versioning
+  track_data_versions: true             # Whether to track data file versions
+  data_hash_algorithm: "sha256"         # Hash algorithm for data versioning
+
+# Validation and quality control
+validation:
+  # Input validation
+  validate_inputs: true                 # Whether to validate input data
+  input_validation_strict: false       # Whether to use strict input validation
+  
+  # Configuration validation
+  validate_configs: true                # Whether to validate configuration files
+  config_schema_validation: true       # Whether to use schema validation
+  
+  # Output validation
+  validate_outputs: true                # Whether to validate output files
+  output_integrity_checks: true        # Whether to perform integrity checks
+  
+  # Model validation
+  validate_model_architecture: true    # Whether to validate model architecture
+  validate_model_outputs: true         # Whether to validate model outputs
+  
+  # Statistical validation
+  run_statistical_tests: true          # Whether to run statistical validation tests
+  significance_threshold: 0.05         # Significance threshold for tests
+
+# Performance optimization
+performance:
+  # Memory optimization
+  use_memory_mapping: true              # Whether to use memory mapping for large files
+  chunk_processing: true                # Whether to process data in chunks
+  chunk_size: 1000                      # Default chunk size for processing
+  
+  # CPU optimization
+  n_jobs: -1                           # Number of CPU cores to use (-1 for all)
+  parallel_backend: "threading"        # Parallel backend: "threading", "multiprocessing"
+  
+  # GPU optimization
+  use_gpu: true                        # Whether to use GPU if available
+  gpu_memory_fraction: 0.8             # Fraction of GPU memory to use
+  mixed_precision: false               # Whether to use mixed precision training
+  
+  # I/O optimization
+  prefetch_data: true                  # Whether to prefetch data
+  cache_preprocessed: true             # Whether to cache preprocessed data
+  async_io: false                      # Whether to use asynchronous I/O
+
+# Debugging and development
+debugging:
+  # Debug mode
+  debug_mode: false                    # Whether to run in debug mode
+  verbose_output: false                # Whether to produce verbose output
+  
+  # Profiling
+  enable_profiling: false              # Whether to enable performance profiling
+  profiler_output_dir: "outputs/profiling"  # Directory for profiling outputs
+  
+  # Memory debugging
+  track_memory_usage: false            # Whether to track memory usage
+  memory_profiling: false              # Whether to enable memory profiling
+  
+  # Intermediate outputs
+  save_intermediate_results: false     # Whether to save intermediate results
+  intermediate_save_frequency: 10      # Frequency of intermediate saves
+  
+  # Testing
+  run_unit_tests: false                # Whether to run unit tests
+  run_integration_tests: false        # Whether to run integration tests
+  test_data_fraction: 0.01             # Fraction of data to use for testing
