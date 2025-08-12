@@ -64,6 +64,12 @@ class ReplogleDatasetDownloader:
     
     # Dataset URLs and checksums
     DATASET_SOURCES = {
+        "figshare_k562": {
+            "url": "https://api.figshare.com/v2/articles/20029387",
+            "description": "Replogle 2022 K562 essential Perturb-seq dataset from Figshare",
+            "expected_size": None,  # Will be determined during download
+            "sha256": None,  # Will be computed during download
+        },
         "geo_main": {
             "url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE144nnn/GSE144623/suppl/GSE144623%5FK562%5Fessential%5Fraw%5Fsinglecell%5F01%2Eh5ad%2Egz",
             "description": "K562 essential gene screen - raw single cell data (part 1)",
@@ -73,12 +79,6 @@ class ReplogleDatasetDownloader:
         "geo_metadata": {
             "url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE144nnn/GSE144623/suppl/GSE144623%5FK562%5Fessential%5Fmetadata%2Ecsv%2Egz",
             "description": "K562 essential gene screen - metadata",
-            "expected_size": None,
-            "sha256": None,
-        },
-        "figshare_main": {
-            "url": "https://figshare.com/ndownloader/files/24667905",
-            "description": "Replogle 2022 K562 essential screen data from Figshare",
             "expected_size": None,
             "sha256": None,
         }
@@ -150,7 +150,7 @@ class ReplogleDatasetDownloader:
                 logger.warning(f"Server reported size {total_size} differs from expected {expected_size}")
             
             # Download with progress bar
-            response = self.session.get(url, stream=True, timeout=300)  # Increased timeout
+            response = self.session.get(url, stream=True, timeout=600)  # Increased timeout
             response.raise_for_status()
             
             hash_sha256 = hashlib.sha256()
@@ -226,6 +226,78 @@ class ReplogleDatasetDownloader:
             logger.error(f"Actual:   {actual_hash}")
             return False
     
+    def download_figshare_k562(self) -> List[Dict]:
+        """
+        Download K562 essential files from Figshare using the provided script logic.
+        
+        Returns:
+            List of download results for K562 files
+        """
+        logger.info("Downloading K562 essential files from Figshare...")
+        
+        # Figshare API item endpoint
+        API_ITEM_URL = "https://api.figshare.com/v2/articles/20029387"
+        
+        try:
+            # 1) Get item metadata (lists files with their download URLs)
+            meta = requests.get(API_ITEM_URL, timeout=60)
+            meta.raise_for_status()
+            item = meta.json()
+            
+            # 2) Inspect files and filter for K562_essential .h5ad
+            files = item.get("files", [])
+            target_files = []
+            for f in files:
+                name = f.get("name", "")
+                if "K562_essential" in name and name.endswith(".h5ad"):
+                    target_files.append({
+                        "name": name,
+                        "download_url": f.get("download_url")
+                    })
+            
+            logger.info(f"Found {len(target_files)} K562 essential files on Figshare")
+            for f in target_files:
+                logger.info(f"- {f['name']}")
+            
+            # 3) Download selected files (streaming)
+            results = []
+            for f in target_files:
+                url = f["download_url"]
+                if not url:
+                    logger.warning(f"Skipping (no direct URL): {f['name']}")
+                    continue
+                
+                filename = f["name"]
+                file_path = self.output_dir / filename
+                
+                logger.info(f"Downloading {filename} ...")
+                with requests.get(url, stream=True, timeout=600) as r:
+                    r.raise_for_status()
+                    with open(file_path, "wb") as fh:
+                        for chunk in r.iter_content(chunk_size=1<<20):
+                            if chunk:
+                                fh.write(chunk)
+                
+                # Compute hash and size
+                sha256_hash, file_size = self._compute_file_hash_and_size(file_path)
+                
+                logger.info(f"Saved to {file_path}")
+                logger.info(f"SHA256: {sha256_hash}")
+                logger.info(f"Size: {file_size} bytes")
+                
+                results.append({
+                    "name": filename,
+                    "file_path": file_path,
+                    "sha256": sha256_hash,
+                    "size": file_size,
+                    "success": True
+                })
+            
+            return results
+            
+        except Exception as e:
+            raise DataIngestionError(f"Failed to download from Figshare: {e}")
+    
     def download_dataset(self, source_priority: List[str] = None) -> Dict[str, Dict]:
         """
         Download the complete Replogle dataset.
@@ -237,7 +309,7 @@ class ReplogleDatasetDownloader:
             Dictionary with download results and metadata
         """
         if source_priority is None:
-            source_priority = ["geo_main", "geo_metadata"]
+            source_priority = ["figshare_k562", "geo_main", "geo_metadata"]
         
         download_results = {}
         download_metadata = {
@@ -258,49 +330,77 @@ class ReplogleDatasetDownloader:
             source_info = self.DATASET_SOURCES[source_key]
             url = source_info["url"]
             
-            # Generate filename from URL
-            parsed_url = urlparse(url)
-            if source_key == "figshare_main":
-                filename = "replogle_k562_essential_figshare.h5ad"
-            else:
-                filename = Path(parsed_url.path).name
-                # Decode URL encoding for the actual filename
-                import urllib.parse
-                filename = urllib.parse.unquote(filename)
-                if not filename:
-                    filename = f"{source_key}_data.dat"
-            
             try:
-                file_path, sha256_hash, file_size = self.download_file(url, filename)
-                
-                # Store results
-                download_results[source_key] = {
-                    "file_path": file_path,
-                    "sha256": sha256_hash,
-                    "size": file_size,
-                    "success": True
-                }
-                
-                # Update metadata
-                download_metadata["sources"][source_key] = {
-                    "url": url,
-                    "description": source_info["description"],
-                    "filename": filename,
-                    "sha256": sha256_hash,
-                    "size": file_size,
-                    "download_success": True
-                }
-                
-                download_metadata["files"][filename] = {
-                    "source": source_key,
-                    "path": str(file_path),
-                    "sha256": sha256_hash,
-                    "size": file_size
-                }
-                
-                download_metadata["total_size"] += file_size
-                
-                logger.info(f"Successfully processed source: {source_key}")
+                if source_key == "figshare_k562":
+                    # Special handling for Figshare K562 files
+                    figshare_results = self.download_figshare_k562()
+                    
+                    # Add results to download_results
+                    for result in figshare_results:
+                        # Use a unique key for each file
+                        file_key = f"figshare_k562_{result['name']}"
+                        download_results[file_key] = result
+                        
+                        # Update metadata
+                        download_metadata["sources"][file_key] = {
+                            "url": result["file_path"],
+                            "description": f"K562 essential file: {result['name']}",
+                            "filename": result["name"],
+                            "sha256": result["sha256"],
+                            "size": result["size"],
+                            "download_success": True
+                        }
+                        
+                        download_metadata["files"][result["name"]] = {
+                            "source": file_key,
+                            "path": str(result["file_path"]),
+                            "sha256": result["sha256"],
+                            "size": result["size"]
+                        }
+                        
+                        download_metadata["total_size"] += result["size"]
+                    
+                    logger.info(f"Successfully processed source: {source_key}")
+                else:
+                    # Generate filename from URL
+                    parsed_url = urlparse(url)
+                    filename = Path(parsed_url.path).name
+                    # Decode URL encoding for the actual filename
+                    import urllib.parse
+                    filename = urllib.parse.unquote(filename)
+                    if not filename:
+                        filename = f"{source_key}_data.dat"
+                    
+                    file_path, sha256_hash, file_size = self.download_file(url, filename)
+                    
+                    # Store results
+                    download_results[source_key] = {
+                        "file_path": file_path,
+                        "sha256": sha256_hash,
+                        "size": file_size,
+                        "success": True
+                    }
+                    
+                    # Update metadata
+                    download_metadata["sources"][source_key] = {
+                        "url": url,
+                        "description": source_info["description"],
+                        "filename": filename,
+                        "sha256": sha256_hash,
+                        "size": file_size,
+                        "download_success": True
+                    }
+                    
+                    download_metadata["files"][filename] = {
+                        "source": source_key,
+                        "path": str(file_path),
+                        "sha256": sha256_hash,
+                        "size": file_size
+                    }
+                    
+                    download_metadata["total_size"] += file_size
+                    
+                    logger.info(f"Successfully processed source: {source_key}")
                 
             except DataIngestionError as e:
                 logger.error(f"Failed to download from source {source_key}: {e}")
@@ -362,7 +462,7 @@ def main():
     parser = argparse.ArgumentParser(description="Download Replogle 2022 K562 essential Perturb-seq dataset")
     parser.add_argument("--config", type=str, help="Path to configuration file")
     parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/raw", help="Output directory for raw data")
-    parser.add_argument("--sources", nargs="+", default=["geo_main", "geo_metadata"], 
+    parser.add_argument("--sources", nargs="+", default=["figshare_k562", "geo_main", "geo_metadata"], 
                        help="Data sources to download from")
     parser.add_argument("--validate", action="store_true", help="Validate downloaded files")
     parser.add_argument("--force-redownload", action="store_true", help="Force re-download even if files exist")
