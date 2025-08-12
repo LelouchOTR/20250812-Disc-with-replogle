@@ -282,7 +282,10 @@ class ModelTrainer:
                 self.scheduler = None
         
         # Initialize tensorboard writer
-        self.writer = SummaryWriter(log_dir=self.logs_dir / 'tensorboard')
+        if TENSORBOARD_AVAILABLE:
+            self.writer = SummaryWriter(log_dir=self.logs_dir / 'tensorboard')
+        else:
+            self.writer = None
         
         logger.info(f"Initialized model with {self.model._count_parameters():,} parameters")
     
@@ -709,4 +712,5 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
 
