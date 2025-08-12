@@ -24,8 +24,16 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
 import anndata as ad
+
+# Optional tensorboard import
+try:
+    from torch.utils.tensorboard import SummaryWriter
+    TENSORBOARD_AVAILABLE = True
+except ImportError:
+    logger.warning("TensorBoard not available, logging will be limited")
+    SummaryWriter = None
+    TENSORBOARD_AVAILABLE = False
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
@@ -701,3 +709,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
