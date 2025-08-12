@@ -31,7 +31,6 @@ try:
     from torch.utils.tensorboard import SummaryWriter
     TENSORBOARD_AVAILABLE = True
 except ImportError:
-    logger.warning("TensorBoard not available, logging will be limited")
     SummaryWriter = None
     TENSORBOARD_AVAILABLE = False
 import matplotlib.pyplot as plt
@@ -712,5 +711,6 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
 
 
