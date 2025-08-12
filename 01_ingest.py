@@ -156,14 +156,26 @@ class ReplogleDatasetDownloader:
             hash_sha256 = hashlib.sha256()
             downloaded_size = 0
             
-            with open(file_path, 'wb') as f:
-                with tqdm(total=total_size, unit='B', unit_scale=True, desc=filename) as pbar:
+            # If we don't have total_size, don't show progress bar
+            if total_size > 0:
+                with open(file_path, 'wb') as f:
+                    with tqdm(total=total_size, unit='B', unit_scale=True, desc=filename) as pbar:
+                        for chunk in response.iter_content(chunk_size=8192):
+                            if chunk:
+                                f.write(chunk)
+                                hash_sha256.update(chunk)
+                                chunk_size = len(chunk)
+                                downloaded_size += chunk_size
+                                pbar.update(chunk_size)
+            else:
+                # Download without progress bar if size is unknown
+                logger.info("File size unknown, downloading without progress bar...")
+                with open(file_path, 'wb') as f:
                     for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
                             f.write(chunk)
                             hash_sha256.update(chunk)
                             downloaded_size += len(chunk)
-                            pbar.update(len(chunk))
             
             sha256_hash = hash_sha256.hexdigest()
             
@@ -278,27 +290,42 @@ class ReplogleDatasetDownloader:
                 total_size = int(head_response.headers.get('content-length', 0))
                 
                 # Download with progress bar
+                hash_sha256 = hashlib.sha256()
+                downloaded_size = 0
+                
                 with requests.get(url, stream=True, timeout=600) as r:
                     r.raise_for_status()
                     with open(file_path, "wb") as fh:
-                        with tqdm(total=total_size, unit='B', unit_scale=True, desc=filename) as pbar:
-                            for chunk in r.iter_content(chunk_size=1<<20):
+                        if total_size > 0:
+                            with tqdm(total=total_size, unit='B', unit_scale=True, desc=filename) as pbar:
+                                for chunk in r.iter_content(chunk_size=8192):
+                                    if chunk:
+                                        fh.write(chunk)
+                                        hash_sha256.update(chunk)
+                                        chunk_size = len(chunk)
+                                        downloaded_size += chunk_size
+                                        pbar.update(chunk_size)
+                        else:
+                            # Download without progress bar if size is unknown
+                            logger.info(f"File size unknown for {filename}, downloading without progress bar...")
+                            for chunk in r.iter_content(chunk_size=8192):
                                 if chunk:
                                     fh.write(chunk)
-                                    pbar.update(len(chunk))
+                                    hash_sha256.update(chunk)
+                                    downloaded_size += len(chunk)
                 
                 # Compute hash and size
-                sha256_hash, file_size = self._compute_file_hash_and_size(file_path)
+                sha256_hash = hash_sha256.hexdigest()
                 
                 logger.info(f"Saved to {file_path}")
                 logger.info(f"SHA256: {sha256_hash}")
-                logger.info(f"Size: {file_size} bytes")
+                logger.info(f"Size: {downloaded_size} bytes")
                 
                 results.append({
                     "name": filename,
                     "file_path": file_path,
                     "sha256": sha256_hash,
-                    "size": file_size,
+                    "size": downloaded_size,
                     "success": True
                 })
             
