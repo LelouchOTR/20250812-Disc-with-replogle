@@ -38,18 +38,41 @@ class PipelineError(Exception):
 
 
 def run_step(command: list):
-    """Run a pipeline step as a subprocess."""
+    """Run a pipeline step as a subprocess with real-time output."""
     logger.info(f"Running command: {' '.join(command)}")
     try:
-        process = subprocess.run(command, check=True, capture_output=True, text=True)
-        logger.info(process.stdout)
-        if process.stderr:
-            logger.warning(process.stderr)
+        # Use Popen for real-time output streaming
+        process = subprocess.Popen(
+            command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            universal_newlines=True,
+            bufsize=1
+        )
+        
+        # Stream output in real-time
+        while True:
+            output = process.stdout.readline()
+            if output == '' and process.poll() is not None:
+                break
+            if output:
+                print(output.strip())
+                sys.stdout.flush()
+        
+        # Capture any remaining stderr output
+        stderr_output = process.stderr.read()
+        if stderr_output:
+            logger.warning(stderr_output)
+            
+        # Wait for process to complete and check return code
+        return_code = process.poll()
+        if return_code != 0:
+            raise subprocess.CalledProcessError(return_code, command)
+            
     except subprocess.CalledProcessError as e:
-        logger.error(f"Command failed with exit code {e.returncode}")
-        logger.error(f"Stdout: {e.stdout}")
-        logger.error(f"Stderr: {e.stderr}")
         raise PipelineError(f"Step failed: {' '.join(command)}")
+    except Exception as e:
+        raise PipelineError(f"Step failed: {' '.join(command)} - {e}")
 
 
 def run_ingest(config: dict, seed: int):
