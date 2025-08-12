@@ -323,7 +323,7 @@ class ReplogleDatasetDownloader:
                 
                 results.append({
                     "name": filename,
-                    "file_path": file_path,
+                    "file_path": str(file_path),  # Convert to string for JSON serialization
                     "sha256": sha256_hash,
                     "size": downloaded_size,
                     "success": True
@@ -379,7 +379,7 @@ class ReplogleDatasetDownloader:
                         
                         # Update metadata
                         download_metadata["sources"][file_key] = {
-                            "url": result["file_path"],
+                            "url": result["file_path"],  # Already converted to string
                             "description": f"K562 essential file: {result['name']}",
                             "filename": result["name"],
                             "sha256": result["sha256"],
@@ -389,7 +389,7 @@ class ReplogleDatasetDownloader:
                         
                         download_metadata["files"][result["name"]] = {
                             "source": file_key,
-                            "path": str(result["file_path"]),
+                            "path": result["file_path"],  # Already converted to string
                             "sha256": result["sha256"],
                             "size": result["size"]
                         }
@@ -411,7 +411,7 @@ class ReplogleDatasetDownloader:
                     
                     # Store results
                     download_results[source_key] = {
-                        "file_path": file_path,
+                        "file_path": str(file_path),  # Convert to string for JSON serialization
                         "sha256": sha256_hash,
                         "size": file_size,
                         "success": True
@@ -429,7 +429,7 @@ class ReplogleDatasetDownloader:
                     
                     download_metadata["files"][filename] = {
                         "source": source_key,
-                        "path": str(file_path),
+                        "path": str(file_path),  # Convert to string for JSON serialization
                         "sha256": sha256_hash,
                         "size": file_size
                     }
@@ -484,7 +484,7 @@ class ReplogleDatasetDownloader:
                 all_valid = False
                 continue
             
-            file_path = result["file_path"]
+            file_path = Path(result["file_path"])  # Convert back to Path for operations
             expected_hash = result["sha256"]
             
             if not self.verify_checksum(file_path, expected_hash):
@@ -498,7 +498,7 @@ def main():
     parser = argparse.ArgumentParser(description="Download Replogle 2022 K562 essential Perturb-seq dataset")
     parser.add_argument("--config", type=str, help="Path to configuration file")
     parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/raw", help="Output directory for raw data")
-    parser.add_argument("--sources", nargs="+", default=["figshare_k562", "geo_main", "geo_metadata"], 
+    parser.add_argument("--sources", nargs="+", default=["figshare_k562"], 
                        help="Data sources to download from")
     parser.add_argument("--validate", action="store_true", help="Validate downloaded files")
     parser.add_argument("--force-redownload", action="store_true", help="Force re-download even if files exist")
