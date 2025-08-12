@@ -271,12 +271,21 @@ class ReplogleDatasetDownloader:
                 file_path = self.output_dir / filename
                 
                 logger.info(f"Downloading {filename} ...")
+                
+                # Get file size for progress bar
+                head_response = requests.head(url, timeout=30)
+                head_response.raise_for_status()
+                total_size = int(head_response.headers.get('content-length', 0))
+                
+                # Download with progress bar
                 with requests.get(url, stream=True, timeout=600) as r:
                     r.raise_for_status()
                     with open(file_path, "wb") as fh:
-                        for chunk in r.iter_content(chunk_size=1<<20):
-                            if chunk:
-                                fh.write(chunk)
+                        with tqdm(total=total_size, unit='B', unit_scale=True, desc=filename) as pbar:
+                            for chunk in r.iter_content(chunk_size=1<<20):
+                                if chunk:
+                                    fh.write(chunk)
+                                    pbar.update(len(chunk))
                 
                 # Compute hash and size
                 sha256_hash, file_size = self._compute_file_hash_and_size(file_path)
@@ -493,7 +502,7 @@ def main():
         # Initialize downloader
         downloader = ReplogleDatasetDownloader(output_dir, config)
         
-        # Remove existing files if force redownload
+        # Remove existing files if force download
         if args.force_redownload:
             logger.info("Force redownload enabled, removing existing files...")
             for file_path in output_dir.glob("*"):
