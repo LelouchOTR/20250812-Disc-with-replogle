@@ -65,13 +65,13 @@ class ReplogleDatasetDownloader:
     # Dataset URLs and checksums
     DATASET_SOURCES = {
         "geo_main": {
-            "url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE144000/GSE144623/suppl/GSE144623_K562_essential_raw_singlecell_01.h5ad.gz",
+            "url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE144nnn/GSE144623/suppl/GSE144623%5FK562%5Fessential%5Fraw%5Fsinglecell%5F01%2Eh5ad%2Egz",
             "description": "K562 essential gene screen - raw single cell data (part 1)",
             "expected_size": None,  # Will be determined during download
             "sha256": None,  # Will be computed during download
         },
         "geo_metadata": {
-            "url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE144000/GSE144623/suppl/GSE144623_K562_essential_metadata.csv.gz",
+            "url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE144nnn/GSE144623/suppl/GSE144623%5FK562%5Fessential%5Fmetadata%2Ecsv%2Egz",
             "description": "K562 essential gene screen - metadata",
             "expected_size": None,
             "sha256": None,
@@ -150,7 +150,7 @@ class ReplogleDatasetDownloader:
                 logger.warning(f"Server reported size {total_size} differs from expected {expected_size}")
             
             # Download with progress bar
-            response = self.session.get(url, stream=True, timeout=30)
+            response = self.session.get(url, stream=True, timeout=300)  # Increased timeout
             response.raise_for_status()
             
             hash_sha256 = hashlib.sha256()
@@ -264,6 +264,9 @@ class ReplogleDatasetDownloader:
                 filename = "replogle_k562_essential_figshare.h5ad"
             else:
                 filename = Path(parsed_url.path).name
+                # Decode URL encoding for the actual filename
+                import urllib.parse
+                filename = urllib.parse.unquote(filename)
                 if not filename:
                     filename = f"{source_key}_data.dat"
             
