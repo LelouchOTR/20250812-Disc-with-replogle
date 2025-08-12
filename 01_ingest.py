@@ -65,13 +65,13 @@ class ReplogleDatasetDownloader:
     # Dataset URLs and checksums
     DATASET_SOURCES = {
         "geo_main": {
-            "url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE144nnn/GSE144623/suppl/GSE144623_K562_essential_raw_singlecell_01.h5ad.gz",
+            "url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE144000/GSE144623/suppl/GSE144623_K562_essential_raw_singlecell_01.h5ad.gz",
             "description": "K562 essential gene screen - raw single cell data (part 1)",
             "expected_size": None,  # Will be determined during download
             "sha256": None,  # Will be computed during download
         },
         "geo_metadata": {
-            "url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE144nnn/GSE144623/suppl/GSE144623_K562_essential_metadata.csv.gz",
+            "url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE144000/GSE144623/suppl/GSE144623_K562_essential_metadata.csv.gz",
             "description": "K562 essential gene screen - metadata",
             "expected_size": None,
             "sha256": None,
