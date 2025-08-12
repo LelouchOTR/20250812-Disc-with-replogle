@@ -119,8 +119,10 @@ class ModelTrainer:
         self.train_loader = None
         self.val_loader = None
         self.writer = None
+        self.adjacency_matrix = None
         
         # Training history
+        self.start_epoch = 0
         self.train_history = defaultdict(list)
         self.val_history = defaultdict(list)
         self.best_val_loss = float('inf')
@@ -319,7 +321,7 @@ class ModelTrainer:
             
             # Compute loss
             loss_dict = self.model.compute_loss(
-                x, model_output, is_control, perturbation_labels
+                x, model_output, is_control, perturbation_labels, self.adjacency_matrix
             )
             
             total_loss = loss_dict['total_loss']
@@ -379,7 +381,7 @@ class ModelTrainer:
                 
                 # Compute loss
                 loss_dict = self.model.compute_loss(
-                    x, model_output, is_control, perturbation_labels
+                    x, model_output, is_control, perturbation_labels, self.adjacency_matrix
                 )
                 
                 # Record losses
@@ -576,6 +578,53 @@ class ModelTrainer:
         
         logger.info(f"Saved training summary to {summary_path}")
     
+    def resume_from_checkpoint(self, resume_path: Path) -> None:
+        """
+        Resume training from a checkpoint.
+        
+        Args:
+            resume_path: Path to the checkpoint file
+        """
+        if not resume_path.exists():
+            raise TrainingError(f"Resume checkpoint not found: {resume_path}")
+        
+        logger.info(f"Resuming training from checkpoint: {resume_path}")
+        
+        # Load checkpoint
+        checkpoint = torch.load(resume_path, map_location=self.device)
+        
+        # Restore model state
+        if 'model_state_dict' in checkpoint:
+            self.model.load_state_dict(checkpoint['model_state_dict'])
+        else:
+            raise TrainingError("Checkpoint does not contain model_state_dict")
+        
+        # Restore optimizer state
+        if 'optimizer_state_dict' in checkpoint and self.optimizer:
+            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        
+        # Restore scheduler state
+        if 'scheduler_state_dict' in checkpoint and self.scheduler:
+            self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        
+        # Restore training state
+        self.start_epoch = checkpoint.get('epoch', 0) + 1
+        self.best_val_loss = checkpoint.get('metrics', {}).get('best_val_loss', float('inf'))
+        self.best_epoch = checkpoint.get('metrics', {}).get('best_epoch', 0)
+        self.epochs_without_improvement = checkpoint.get('metrics', {}).get('epochs_without_improvement', 0)
+        
+        # Restore training history
+        train_history = checkpoint.get('metrics', {}).get('train_history', {})
+        val_history = checkpoint.get('metrics', {}).get('val_history', {})
+        
+        for key, values in train_history.items():
+            self.train_history[key].extend(values)
+            
+        for key, values in val_history.items():
+            self.val_history[key].extend(values)
+        
+        logger.info(f"Resumed from epoch {self.start_epoch - 1}, best val loss: {self.best_val_loss:.4f}")
+
     def train(self) -> None:
         """Main training loop."""
         logger.info("Starting training...")
@@ -583,7 +632,7 @@ class ModelTrainer:
         start_time = time.time()
         
         try:
-            for epoch in range(self.epochs):
+            for epoch in range(self.start_epoch, self.epochs):
                 # Training phase
                 train_metrics = self.train_epoch(epoch)
                 
@@ -687,16 +736,14 @@ def main():
         
         # Load graph (optional)
         if args.graph_dir:
-            adjacency_matrix = trainer.load_graph(args.graph_dir)
-            # TODO: Integrate graph into model if needed
+            trainer.adjacency_matrix = trainer.load_graph(args.graph_dir)
         
         # Initialize model
         trainer.initialize_model()
         
         # Resume from checkpoint if specified
         if args.resume:
-            logger.info(f"Resuming training from {args.resume}")
-            # TODO: Implement checkpoint resuming
+            trainer.resume_from_checkpoint(Path(args.resume))
         
         # Start training
         trainer.train()
@@ -711,6 +758,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-
-
-
