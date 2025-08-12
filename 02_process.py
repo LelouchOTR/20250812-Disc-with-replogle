@@ -579,7 +579,7 @@ def main():
     parser = argparse.ArgumentParser(description="Process single-cell perturbation data")
     parser.add_argument("--input", type=str, required=True, help="Path to raw data file")
     parser.add_argument("--config", type=str, default="data_config", help="Configuration file name")
-    parser.add_argument("--output-dir", type=str, default="data/processed", help="Output directory")
+    parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/processed", help="Output directory")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     
     args = parser.parse_args()

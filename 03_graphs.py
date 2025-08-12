@@ -788,8 +788,8 @@ def main():
     """Main function for GO graph generation pipeline."""
     parser = argparse.ArgumentParser(description="Generate Gene Ontology gene adjacency graph")
     parser.add_argument("--config", type=str, default="graph_config", help="Configuration file name")
-    parser.add_argument("--output-dir", type=str, default="data/graphs", help="Output directory")
-    parser.add_argument("--cache-dir", type=str, default="data/cache/go", help="Cache directory")
+    parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/graphs", help="Output directory")
+    parser.add_argument("--cache-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/cache/go", help="Cache directory")
     parser.add_argument("--force-refresh", action="store_true", help="Force refresh of cached data")
     parser.add_argument("--validate", action="store_true", help="Validate generated graph")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
@@ -852,4 +852,3 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
-

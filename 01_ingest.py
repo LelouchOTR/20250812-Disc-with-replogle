@@ -361,7 +361,7 @@ def main():
     """Main function for data ingestion pipeline."""
     parser = argparse.ArgumentParser(description="Download Replogle 2022 K562 essential Perturb-seq dataset")
     parser.add_argument("--config", type=str, help="Path to configuration file")
-    parser.add_argument("--output-dir", type=str, default="data/raw", help="Output directory for raw data")
+    parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/raw", help="Output directory for raw data")
     parser.add_argument("--sources", nargs="+", default=["geo_main", "geo_metadata"], 
                        help="Data sources to download from")
     parser.add_argument("--validate", action="store_true", help="Validate downloaded files")

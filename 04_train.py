@@ -696,9 +696,9 @@ def main():
     """Main function for model training pipeline."""
     parser = argparse.ArgumentParser(description="Train DiscrepancyVAE model")
     parser.add_argument("--config", type=str, default="model_config", help="Configuration file name")
-    parser.add_argument("--data-dir", type=str, default="data/processed", help="Processed data directory")
+    parser.add_argument("--data-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/processed", help="Processed data directory")
     parser.add_argument("--graph-dir", type=str, help="Gene adjacency graph directory")
-    parser.add_argument("--output-dir", type=str, default="outputs/models", help="Output directory")
+    parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/models", help="Output directory")
     parser.add_argument("--device", type=str, help="Device to use (cuda/cpu)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--resume", type=str, help="Resume training from checkpoint")

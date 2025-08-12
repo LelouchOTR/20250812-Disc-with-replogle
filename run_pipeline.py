@@ -55,7 +55,7 @@ def run_step(command: list):
 def run_ingest(config: dict, seed: int):
     """Run the data ingestion step."""
     logger.info("--- Running Ingestion Step ---")
-    output_dir = os.path.join(config['output_paths']['base_output_dir'], 'raw')
+    output_dir = "/data/gidb/shared/results/tmp/replogle/raw"
     cmd = [
         "python", "01_ingest.py",
         "--output-dir", output_dir,
@@ -68,7 +68,7 @@ def run_ingest(config: dict, seed: int):
 def run_process(config: dict, seed: int):
     """Run the data processing step."""
     logger.info("--- Running Processing Step ---")
-    raw_data_dir = os.path.join(config['output_paths']['base_output_dir'], 'raw')
+    raw_data_dir = "/data/gidb/shared/results/tmp/replogle/raw"
     # Find the main data file
     raw_data_file = ""
     for f in os.listdir(raw_data_dir):
@@ -78,7 +78,7 @@ def run_process(config: dict, seed: int):
     if not raw_data_file:
         raise PipelineError("Could not find raw data file in raw data directory.")
         
-    output_dir = config['output_paths']['processed_data_dir']
+    output_dir = "/data/gidb/shared/results/tmp/replogle/processed"
     cmd = [
         "python", "02_process.py",
         "--input", raw_data_file,
@@ -93,7 +93,7 @@ def run_process(config: dict, seed: int):
 def run_graphs(config: dict, seed: int):
     """Run the graph generation step."""
     logger.info("--- Running Graph Generation Step ---")
-    output_dir = os.path.join(config['output_paths']['base_output_dir'], 'graphs')
+    output_dir = "/data/gidb/shared/results/tmp/replogle/graphs"
     cmd = [
         "python", "03_graphs.py",
         "--output-dir", output_dir,
@@ -107,9 +107,9 @@ def run_graphs(config: dict, seed: int):
 def run_train(config: dict, seed: int):
     """Run the model training step."""
     logger.info("--- Running Training Step ---")
-    data_dir = config['output_paths']['processed_data_dir']
-    model_dir = config['output_paths']['models_dir']
-    graph_dir = os.path.join(config['output_paths']['base_output_dir'], 'graphs')
+    data_dir = "/data/gidb/shared/results/tmp/replogle/processed"
+    model_dir = "/data/gidb/shared/results/tmp/replogle/models"
+    graph_dir = "/data/gidb/shared/results/tmp/replogle/graphs"
     
     cmd = [
         "python", "04_train.py",
@@ -128,9 +128,9 @@ def run_train(config: dict, seed: int):
 def run_evaluate(config: dict, seed: int):
     """Run the model evaluation step."""
     logger.info("--- Running Evaluation Step ---")
-    model_path = os.path.join(config['output_paths']['models_dir'], 'best_model.pth')
-    data_path = os.path.join(config['output_paths']['processed_data_dir'], 'test_data.h5ad')
-    output_dir = config['output_paths']['evaluation_dir']
+    model_path = "/data/gidb/shared/results/tmp/replogle/models/best_model.pth"
+    data_path = "/data/gidb/shared/results/tmp/replogle/processed/test_data.h5ad"
+    output_dir = "/data/gidb/shared/results/tmp/replogle/evaluation"
     
     cmd = [
         "python", "05_eval.py",

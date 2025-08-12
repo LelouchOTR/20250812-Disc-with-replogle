@@ -216,7 +216,7 @@ def main():
     parser.add_argument("--config", type=str, default="pipeline_config", help="Configuration file name")
     parser.add_argument("--model-path", type=str, required=True, help="Path to the trained model checkpoint")
     parser.add_argument("--data-path", type=str, required=True, help="Path to the test data file (h5ad)")
-    parser.add_argument("--output-dir", type=str, default="outputs/evaluation", help="Output directory")
+    parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/evaluation", help="Output directory")
     parser.add_argument("--device", type=str, help="Device to use (cuda/cpu)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     
