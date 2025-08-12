@@ -1,0 +1,174 @@
+# Model configuration for DiscrepancyVAE training
+# Configuration for model architecture, training parameters, and optimization
+
+# DiscrepancyVAE architecture parameters
+architecture:
+  # Encoder network dimensions
+  encoder_dims: [2000, 1024, 512, 256]  # Hidden layer dimensions for encoder
+  
+  # Decoder network dimensions  
+  decoder_dims: [256, 512, 1024, 2000]  # Hidden layer dimensions for decoder
+  
+  # Latent space configuration
+  latent_dim: 64                         # Dimensionality of latent space
+  
+  # Regularization
+  dropout_rate: 0.1                      # Dropout rate for all layers
+  batch_norm: true                       # Whether to use batch normalization
+  
+  # Activation functions
+  encoder_activation: "relu"             # Activation for encoder: "relu", "leaky_relu", "elu", "gelu"
+  decoder_activation: "relu"             # Activation for decoder
+  output_activation: "linear"            # Output layer activation: "linear", "sigmoid", "softmax"
+  
+  # Advanced architecture options
+  use_residual_connections: false        # Whether to use residual connections
+  use_attention: false                   # Whether to use attention mechanisms
+
+# Training configuration
+training:
+  # Optimization parameters
+  batch_size: 256                        # Training batch size
+  learning_rate: 0.001                   # Initial learning rate
+  weight_decay: 1e-5                     # L2 regularization weight decay
+  
+  # Training schedule
+  num_epochs: 200                        # Maximum number of training epochs
+  warmup_epochs: 10                      # Number of warmup epochs
+  
+  # Learning rate scheduling
+  lr_scheduler: "cosine"                 # LR scheduler: "cosine", "step", "exponential", "plateau"
+  lr_scheduler_params:
+    T_max: 200                          # For cosine scheduler
+    eta_min: 1e-6                       # Minimum learning rate
+  
+  # Early stopping
+  early_stopping_patience: 20            # Epochs to wait before early stopping
+  early_stopping_min_delta: 1e-4        # Minimum change to qualify as improvement
+  early_stopping_metric: "val_loss"     # Metric to monitor: "val_loss", "val_reconstruction_loss"
+  
+  # Gradient clipping
+  gradient_clip_norm: 1.0                # Maximum gradient norm (None to disable)
+  
+  # Validation
+  validation_frequency: 1                # Validate every N epochs
+  validation_batch_size: 512             # Validation batch size
+
+# Loss function configuration
+loss_weights:
+  # Primary loss components
+  reconstruction_weight: 1.0             # Weight for reconstruction loss
+  kl_divergence_weight: 1.0              # Weight for KL divergence loss
+  discrepancy_weight: 0.5                # Weight for discrepancy loss between control/perturbed
+  
+  # Additional regularization losses
+  l1_regularization_weight: 0.0          # L1 regularization on latent space
+  l2_regularization_weight: 0.0          # L2 regularization on latent space
+  
+  # Beta-VAE scheduling (for KL weight)
+  beta_vae_schedule: "constant"          # Schedule: "constant", "linear", "cyclical"
+  beta_vae_params:
+    start_beta: 0.1                     # Starting beta value
+    end_beta: 1.0                       # Ending beta value
+    schedule_epochs: 50                 # Epochs over which to schedule
+
+# Discrepancy loss configuration
+discrepancy_loss:
+  # Loss type for measuring discrepancy
+  loss_type: "mse"                       # Options: "mse", "mae", "cosine", "kl_divergence"
+  
+  # Perturbation effect modeling
+  control_key: "non-targeting"           # Key identifying control conditions
+  perturbation_key: "guide_identity"    # Key identifying perturbation conditions
+  
+  # Advanced discrepancy options
+  use_paired_samples: false              # Whether to use paired control/perturbed samples
+  normalize_by_control: true             # Whether to normalize perturbation effects by control
+  
+  # Contrastive learning options
+  contrastive_temperature: 0.1           # Temperature for contrastive loss
+  use_contrastive_loss: false            # Whether to add contrastive loss component
+
+# Optimizer configuration
+optimizer:
+  type: "adam"                           # Optimizer type: "adam", "adamw", "sgd", "rmsprop"
+  
+  # Adam/AdamW specific parameters
+  adam_params:
+    betas: [0.9, 0.999]                 # Beta parameters for Adam
+    eps: 1e-8                           # Epsilon for numerical stability
+    amsgrad: false                      # Whether to use AMSGrad variant
+  
+  # SGD specific parameters
+  sgd_params:
+    momentum: 0.9                       # Momentum for SGD
+    nesterov: true                      # Whether to use Nesterov momentum
+
+# Model checkpointing and saving
+checkpointing:
+  # Checkpoint saving
+  save_best_only: true                   # Whether to save only the best model
+  save_frequency: 10                     # Save checkpoint every N epochs
+  monitor_metric: "val_loss"             # Metric to monitor for best model
+  monitor_mode: "min"                    # Mode: "min" or "max"
+  
+  # Checkpoint file naming
+  checkpoint_prefix: "discrepancy_vae"   # Prefix for checkpoint files
+  save_optimizer_state: true            # Whether to save optimizer state
+  
+  # Model export
+  export_onnx: false                     # Whether to export to ONNX format
+  export_torchscript: false             # Whether to export to TorchScript
+
+# Hardware and performance configuration
+hardware:
+  # Device configuration
+  device: "auto"                         # Device: "auto", "cpu", "cuda", "mps"
+  mixed_precision: false                 # Whether to use mixed precision training
+  
+  # Multi-GPU training
+  use_data_parallel: false               # Whether to use DataParallel
+  use_distributed: false                 # Whether to use DistributedDataParallel
+  
+  # Performance optimization
+  num_workers: 4                         # Number of data loader workers
+  pin_memory: true                       # Whether to pin memory for data loading
+  persistent_workers: true               # Whether to keep workers persistent
+
+# Logging and monitoring
+logging:
+  # Training metrics logging
+  log_frequency: 10                      # Log metrics every N batches
+  log_histograms: false                  # Whether to log parameter histograms
+  log_gradients: false                   # Whether to log gradient norms
+  
+  # Visualization
+  plot_training_curves: true             # Whether to plot training curves
+  plot_latent_space: true                # Whether to plot latent space embeddings
+  plot_reconstructions: true             # Whether to plot reconstruction examples
+  
+  # Experiment tracking
+  use_wandb: false                       # Whether to use Weights & Biases
+  use_tensorboard: true                  # Whether to use TensorBoard
+  experiment_name: "discrepancy_vae"     # Experiment name for tracking
+
+# Reproducibility
+reproducibility:
+  # Random seeds
+  manual_seed: 42                        # Manual seed for PyTorch
+  deterministic: true                    # Whether to use deterministic algorithms
+  benchmark: false                       # Whether to use cudnn benchmark mode
+  
+  # Data loading
+  shuffle_train: true                    # Whether to shuffle training data
+  shuffle_val: false                     # Whether to shuffle validation data
+
+# Model initialization
+initialization:
+  # Weight initialization
+  weight_init: "xavier_uniform"          # Weight initialization: "xavier_uniform", "xavier_normal", "kaiming_uniform", "kaiming_normal"
+  bias_init: "zeros"                     # Bias initialization: "zeros", "ones", "normal"
+  
+  # Custom initialization parameters
+  init_gain: 1.0                         # Gain for weight initialization
+  init_std: 0.02                         # Standard deviation for normal initialization
