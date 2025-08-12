@@ -23,7 +23,7 @@ import numpy as np
 import pandas as pd
 import networkx as nx
 from scipy import sparse
-from sklearn.metrics.pairwise import jaccard_score
+# Note: jaccard_score is not needed for our custom implementation
 import requests
 from tqdm import tqdm
 
@@ -852,3 +852,4 @@ def main():
 
 if __name__ == "__main__":
     sys.exit(main())
+
