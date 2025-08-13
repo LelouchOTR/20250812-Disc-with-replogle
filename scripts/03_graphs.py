@@ -27,8 +27,10 @@ from scipy import sparse
 import requests
 from tqdm import tqdm
 
-# Add src to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+# Add project root to path for imports
+project_root = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(project_root))
+logger.info(f"Added project root to path: {project_root}")
 
 from src.utils.config import load_config
 from src.utils.random_seed import set_global_seed
