@@ -93,23 +93,23 @@ class ModelTrainer:
         self.training_params = config.get('training', {})
         self.model_config = config.get('model_config', {})
         
-        # Training hyperparameters
-        self.epochs = self.training_params.get('epochs', 100)
-        self.batch_size = self.training_params.get('batch_size', 128)
-        self.learning_rate = self.training_params.get('learning_rate', 1e-3)
-        self.weight_decay = self.training_params.get('weight_decay', 1e-5)
-        self.gradient_clip = self.training_params.get('gradient_clip', 1.0)
+        # Training hyperparameters - ensure proper types
+        self.epochs = int(self.training_params.get('epochs', 100))
+        self.batch_size = int(self.training_params.get('batch_size', 128))
+        self.learning_rate = float(self.training_params.get('learning_rate', 1e-3))
+        self.weight_decay = float(self.training_params.get('weight_decay', 1e-5))
+        self.gradient_clip = float(self.training_params.get('gradient_clip', 1.0))
         
-        # Validation and checkpointing
-        self.validation_freq = self.training_params.get('validation_freq', 5)
-        self.checkpoint_freq = self.training_params.get('checkpoint_freq', 10)
-        self.early_stopping_patience = self.training_params.get('early_stopping_patience', 20)
-        self.save_best_only = self.training_params.get('save_best_only', True)
+        # Validation and checkpointing - ensure proper types
+        self.validation_freq = int(self.training_params.get('validation_freq', 5))
+        self.checkpoint_freq = int(self.training_params.get('checkpoint_freq', 10))
+        self.early_stopping_patience = int(self.training_params.get('early_stopping_patience', 20))
+        self.save_best_only = bool(self.training_params.get('save_best_only', True))
         
         # Scheduler parameters
         scheduler_params = self.training_params.get('scheduler', {})
-        self.use_scheduler = scheduler_params.get('enabled', True)
-        self.scheduler_type = scheduler_params.get('type', 'reduce_on_plateau')
+        self.use_scheduler = bool(scheduler_params.get('enabled', True))
+        self.scheduler_type = str(scheduler_params.get('type', 'reduce_on_plateau'))
         self.scheduler_params = scheduler_params.get('params', {})
         
         # Initialize tracking variables
@@ -166,7 +166,7 @@ class ModelTrainer:
         logger.info(f"Loaded validation data: {adata_val.shape}")
         
         # Create data loaders
-        num_workers = self.training_params.get('num_workers', 4)
+        num_workers = int(self.training_params.get('num_workers', 4))
         self.train_loader, self.val_loader = create_data_loaders(
             adata_train, adata_val,
             batch_size=self.batch_size,
@@ -239,21 +239,21 @@ class ModelTrainer:
         logger.info(f"Model architecture:\n{model_summary}")
         
         # Initialize optimizer
-        optimizer_type = self.training_params.get('optimizer', 'adam')
+        optimizer_type = str(self.training_params.get('optimizer', 'adam')).lower()
         
-        if optimizer_type.lower() == 'adam':
+        if optimizer_type == 'adam':
             self.optimizer = optim.Adam(
                 self.model.parameters(),
                 lr=self.learning_rate,
                 weight_decay=self.weight_decay
             )
-        elif optimizer_type.lower() == 'adamw':
+        elif optimizer_type == 'adamw':
             self.optimizer = optim.AdamW(
                 self.model.parameters(),
                 lr=self.learning_rate,
                 weight_decay=self.weight_decay
             )
-        elif optimizer_type.lower() == 'sgd':
+        elif optimizer_type == 'sgd':
             self.optimizer = optim.SGD(
                 self.model.parameters(),
                 lr=self.learning_rate,
@@ -269,20 +269,20 @@ class ModelTrainer:
                 self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
                     self.optimizer,
                     mode='min',
-                    factor=self.scheduler_params.get('factor', 0.5),
-                    patience=self.scheduler_params.get('patience', 10),
+                    factor=float(self.scheduler_params.get('factor', 0.5)),
+                    patience=int(self.scheduler_params.get('patience', 10)),
                     verbose=True
                 )
             elif self.scheduler_type == 'cosine':
                 self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
                     self.optimizer,
                     T_max=self.epochs,
-                    eta_min=self.scheduler_params.get('eta_min', 1e-6)
+                    eta_min=float(self.scheduler_params.get('eta_min', 1e-6))
                 )
             elif self.scheduler_type == 'exponential':
                 self.scheduler = optim.lr_scheduler.ExponentialLR(
                     self.optimizer,
-                    gamma=self.scheduler_params.get('gamma', 0.95)
+                    gamma=float(self.scheduler_params.get('gamma', 0.95))
                 )
             else:
                 logger.warning(f"Unknown scheduler type: {self.scheduler_type}")
@@ -357,7 +357,7 @@ class ModelTrainer:
         # Compute epoch averages
         epoch_metrics = {}
         for key, values in epoch_losses.items():
-            epoch_metrics[key] = np.mean(values)
+            epoch_metrics[key] = float(np.mean(values))
         
         return epoch_metrics
     
@@ -397,7 +397,7 @@ class ModelTrainer:
         # Compute epoch averages
         epoch_metrics = {}
         for key, values in epoch_losses.items():
-            epoch_metrics[key] = np.mean(values)
+            epoch_metrics[key] = float(np.mean(values))
         
         return epoch_metrics
     
@@ -416,8 +416,8 @@ class ModelTrainer:
         metrics = {
             'train_history': dict(self.train_history),
             'val_history': dict(self.val_history),
-            'best_val_loss': self.best_val_loss,
-            'best_epoch': self.best_epoch
+            'best_val_loss': float(self.best_val_loss),
+            'best_epoch': int(self.best_epoch)
         }
         
         # Save regular checkpoint
@@ -460,7 +460,7 @@ class ModelTrainer:
                 self.writer.add_scalar(f'Val/{key}', value, epoch)
         
         # Log learning rate
-        current_lr = self.optimizer.param_groups[0]['lr']
+        current_lr = float(self.optimizer.param_groups[0]['lr'])
         self.writer.add_scalar('Learning_Rate', current_lr, epoch)
         
         # Store in history
@@ -547,16 +547,16 @@ class ModelTrainer:
         summary = {
             'training_config': self.config,
             'model_architecture': {
-                'input_dim': self.input_dim,
-                'total_parameters': self.model._count_parameters(),
+                'input_dim': int(self.input_dim),
+                'total_parameters': int(self.model._count_parameters()),
                 'model_config': self.model_config
             },
             'training_results': {
-                'total_epochs': len(self.train_history['total_loss']),
-                'best_epoch': self.best_epoch,
-                'best_val_loss': self.best_val_loss,
-                'final_train_loss': self.train_history['total_loss'][-1] if self.train_history['total_loss'] else None,
-                'final_val_loss': self.val_history['total_loss'][-1] if self.val_history['total_loss'] else None
+                'total_epochs': int(len(self.train_history['total_loss'])),
+                'best_epoch': int(self.best_epoch),
+                'best_val_loss': float(self.best_val_loss),
+                'final_train_loss': float(self.train_history['total_loss'][-1]) if self.train_history['total_loss'] else None,
+                'final_val_loss': float(self.val_history['total_loss'][-1]) if self.val_history['total_loss'] else None
             },
             'training_history': {
                 'train': dict(self.train_history),
@@ -614,10 +614,10 @@ class ModelTrainer:
             self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         
         # Restore training state
-        self.start_epoch = checkpoint.get('epoch', 0) + 1
-        self.best_val_loss = checkpoint.get('metrics', {}).get('best_val_loss', float('inf'))
-        self.best_epoch = checkpoint.get('metrics', {}).get('best_epoch', 0)
-        self.epochs_without_improvement = checkpoint.get('metrics', {}).get('epochs_without_improvement', 0)
+        self.start_epoch = int(checkpoint.get('epoch', 0)) + 1
+        self.best_val_loss = float(checkpoint.get('metrics', {}).get('best_val_loss', float('inf')))
+        self.best_epoch = int(checkpoint.get('metrics', {}).get('best_epoch', 0))
+        self.epochs_without_improvement = int(checkpoint.get('metrics', {}).get('epochs_without_improvement', 0))
         
         # Restore training history
         train_history = checkpoint.get('metrics', {}).get('train_history', {})
