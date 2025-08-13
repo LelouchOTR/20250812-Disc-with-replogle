@@ -32,6 +32,95 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def create_run_dirs(config: dict, args) -> dict:
+    """
+    Create a timestamped run directory structure and configure a run-specific
+    file logger. Returns a dict with paths for raw, processed, graphs, models,
+    evaluation, logs, and cache directories (all as strings).
+
+    Behavior:
+    - Uses config.output_paths.base_output_dir and config.output_paths.* for naming.
+    - Honors output_paths.timestamp_format and output_paths.use_timestamps.
+    - Includes optional args.run_id when provided.
+    - Writes run_metadata.json into the run root.
+    """
+    import json
+    import subprocess
+    from datetime import datetime
+
+    # Resolve base output dir and naming parameters from config
+    output_cfg = config.get('output_paths', {}) if isinstance(config, dict) else {}
+    base_output_dir = Path(output_cfg.get('base_output_dir', 'outputs'))
+    experiment_name = output_cfg.get('experiment_name', 'run')
+    timestamp_format = output_cfg.get('timestamp_format', '%Y%m%d_%H%M%S')
+    use_timestamps = bool(output_cfg.get('use_timestamps', True))
+
+    run_id = getattr(args, 'run_id', None)
+
+    # Build run folder name
+    now = datetime.now()
+    timestamp = now.strftime(timestamp_format)
+    if run_id and not use_timestamps:
+        run_folder_name = f"{experiment_name}_{run_id}"
+    elif run_id:
+        run_folder_name = f"{experiment_name}_{run_id}_{timestamp}"
+    else:
+        run_folder_name = f"{experiment_name}_{timestamp}" if use_timestamps else f"{experiment_name}"
+
+    # Create run directory and canonical subdirectories
+    run_root = Path(base_output_dir) / run_folder_name
+    subdirs = {
+        'raw': run_root / 'raw',
+        'processed': run_root / 'processed',
+        'graphs': run_root / 'graphs',
+        'models': run_root / 'models',
+        'evaluation': run_root / 'evaluation',
+        'logs': run_root / 'logs',
+        'cache': run_root / 'cache'
+    }
+
+    for p in subdirs.values():
+        p.mkdir(parents=True, exist_ok=True)
+
+    # Add a file handler to the root logger to capture pipeline logs inside run folder
+    try:
+        file_handler = logging.FileHandler(str(subdirs['logs'] / 'pipeline.log'))
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s'))
+        logging.getLogger().addHandler(file_handler)
+    except Exception as e:
+        logger.warning(f"Failed to create run-specific log file handler: {e}")
+
+    # Collect metadata about the run
+    metadata = {
+        'run_root': str(run_root),
+        'run_name': run_folder_name,
+        'timestamp': now.isoformat(),
+        'seed': getattr(args, 'seed', None),
+        'config_file': getattr(args, 'config', None)
+    }
+
+    # Try to capture git commit if available
+    try:
+        git_sha = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'],
+                                          stderr=subprocess.DEVNULL).decode().strip()
+        metadata['git_sha'] = git_sha
+    except Exception:
+        metadata['git_sha'] = None
+
+    # Save metadata
+    try:
+        with open(run_root / 'run_metadata.json', 'w') as fh:
+            json.dump(metadata, fh, indent=2)
+    except Exception as e:
+        logger.warning(f"Unable to write run metadata to {run_root}: {e}")
+
+    logger.info(f"Created run directory: {run_root}")
+
+    # Return string paths for compatibility with subprocess args used below
+    return {k: str(v) for k, v in subdirs.items()}
+
+
 class PipelineError(Exception):
     """Custom exception for pipeline errors."""
     pass
@@ -75,23 +164,24 @@ def run_step(command: list):
         raise PipelineError(f"Step failed: {' '.join(command)} - {e}")
 
 
-def run_ingest(config: dict, seed: int):
+def run_ingest(config: dict, run_dirs: dict, seed: int):
     """Run the data ingestion step."""
     logger.info("--- Running Ingestion Step ---")
-    output_dir = "/data/gidb/shared/results/tmp/replogle/raw"
+    output_dir = run_dirs.get('raw')
     cmd = [
         "python", "scripts/01_ingest.py",
         "--output-dir", output_dir,
         "--seed", str(seed)
     ]
     run_step(cmd)
-    logger.info("--- Ingestion Step Complete ---")
+    logger.info(f"--- Ingestion Step Complete (output: {output_dir}) ---")
 
 
-def run_process(config: dict, seed: int):
+def run_process(config: dict, run_dirs: dict, seed: int):
     """Run the data processing step."""
     logger.info("--- Running Processing Step ---")
-    raw_data_dir = "/data/gidb/shared/results/tmp/replogle/raw"
+    raw_data_dir = run_dirs.get('raw')
+
     # Find the main data file
     raw_data_file = ""
     for f in os.listdir(raw_data_dir):
@@ -101,7 +191,7 @@ def run_process(config: dict, seed: int):
     if not raw_data_file:
         raise PipelineError("Could not find raw data file in raw data directory.")
 
-    output_dir = "/data/gidb/shared/results/tmp/replogle/processed"
+    output_dir = run_dirs.get('processed')
     cmd = [
         "python", "scripts/02_process.py",
         "--input", raw_data_file,
@@ -110,13 +200,13 @@ def run_process(config: dict, seed: int):
         "--seed", str(seed)
     ]
     run_step(cmd)
-    logger.info("--- Processing Step Complete ---")
+    logger.info(f"--- Processing Step Complete (output: {output_dir}) ---")
 
 
-def run_graphs(config: dict, seed: int):
+def run_graphs(config: dict, run_dirs: dict, seed: int):
     """Run the graph generation step."""
     logger.info("--- Running Graph Generation Step ---")
-    output_dir = "/data/gidb/shared/results/tmp/replogle/graphs"
+    output_dir = run_dirs.get('graphs')
     cmd = [
         "python", "scripts/03_graphs.py",
         "--output-dir", output_dir,
@@ -124,15 +214,15 @@ def run_graphs(config: dict, seed: int):
         "--seed", str(seed)
     ]
     run_step(cmd)
-    logger.info("--- Graph Generation Step Complete ---")
+    logger.info(f"--- Graph Generation Step Complete (output: {output_dir}) ---")
 
 
-def run_train(config: dict, seed: int):
+def run_train(config: dict, run_dirs: dict, seed: int):
     """Run the model training step."""
     logger.info("--- Running Training Step ---")
-    data_dir = "/data/gidb/shared/results/tmp/replogle/processed"
-    model_dir = "/data/gidb/shared/results/tmp/replogle/models"
-    graph_dir = "/data/gidb/shared/results/tmp/replogle/graphs"
+    data_dir = run_dirs.get('processed')
+    model_dir = run_dirs.get('models')
+    graph_dir = run_dirs.get('graphs')
 
     cmd = [
         "python", "scripts/04_train.py",
@@ -145,15 +235,15 @@ def run_train(config: dict, seed: int):
         cmd.extend(["--graph-dir", graph_dir])
 
     run_step(cmd)
-    logger.info("--- Training Step Complete ---")
+    logger.info(f"--- Training Step Complete (models: {model_dir}) ---")
 
 
-def run_evaluate(config: dict, seed: int):
+def run_evaluate(config: dict, run_dirs: dict, seed: int):
     """Run the model evaluation step."""
     logger.info("--- Running Evaluation Step ---")
-    model_path = "/data/gidb/shared/results/tmp/replogle/models/best_model.pth"
-    data_path = "/data/gidb/shared/results/tmp/replogle/processed/test_data.h5ad"
-    output_dir = "/data/gidb/shared/results/tmp/replogle/evaluation"
+    model_path = os.path.join(run_dirs.get('models'), "best_model.pth")
+    data_path = os.path.join(run_dirs.get('processed'), "test_data.h5ad")
+    output_dir = run_dirs.get('evaluation')
 
     cmd = [
         "python", "scripts/05_eval.py",
@@ -164,7 +254,7 @@ def run_evaluate(config: dict, seed: int):
         "--seed", str(seed)
     ]
     run_step(cmd)
-    logger.info("--- Evaluation Step Complete ---")
+    logger.info(f"--- Evaluation Step Complete (output: {output_dir}) ---")
 
 
 def main():
@@ -179,12 +269,20 @@ def main():
     parser.add_argument("--config", type=str, default="pipeline_config",
                         help="Main pipeline configuration file (without path or extension).")
     parser.add_argument("--seed", type=int, default=42, help="Global random seed.")
+    parser.add_argument("--run-id", type=str, help="Optional run id to include in the run folder name.")
 
     args = parser.parse_args()
 
     set_global_seed(args.seed)
 
-    config = load_config(args.config)
+    try:
+        config = load_config(args.config)
+    except Exception as e:
+        logger.error(f"Failed to load configuration: {e}")
+        sys.exit(1)
+
+    # Create timestamped run directory structure and configure run logging
+    run_dirs = create_run_dirs(config, args)
 
     steps_to_run = args.steps
     if 'all' in steps_to_run:
@@ -194,15 +292,15 @@ def main():
 
     for step in steps_to_run:
         if step == 'ingest':
-            run_ingest(config, args.seed)
+            run_ingest(config, run_dirs, args.seed)
         elif step == 'process':
-            run_process(config, args.seed)
+            run_process(config, run_dirs, args.seed)
         elif step == 'graphs':
-            run_graphs(config, args.seed)
+            run_graphs(config, run_dirs, args.seed)
         elif step == 'train':
-            run_train(config, args.seed)
+            run_train(config, run_dirs, args.seed)
         elif step == 'evaluate':
-            run_evaluate(config, args.seed)
+            run_evaluate(config, run_dirs, args.seed)
 
     logger.info("Pipeline finished successfully.")
 
