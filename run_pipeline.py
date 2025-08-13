@@ -127,39 +127,31 @@ class PipelineError(Exception):
 
 
 def run_step(command: list):
-    """Run a pipeline step as a subprocess with real-time output."""
+    """Run a pipeline step with real-time output handling."""
     logger.info(f"Running command: {' '.join(command)}")
     try:
-        # Use Popen for real-time output streaming
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # Combine streams
             universal_newlines=True,
-            bufsize=1
+            bufsize=1,
+            text=True
         )
 
-        # Stream output in real-time
-        while True:
-            output = process.stdout.readline()
-            if output == '' and process.poll() is not None:
-                break
-            if output:
-                print(output.strip())
+        # Pipe output incrementally
+        with process.stdout as pipe:
+            for line in iter(pipe.readline, ''):
+                print(line, end='')
                 sys.stdout.flush()
 
-        # Capture any remaining stderr output
-        stderr_output = process.stderr.read()
-        if stderr_output:
-            logger.warning(stderr_output)
-
-        # Wait for process to complete and check return code
-        return_code = process.poll()
+        # Check status after completion
+        return_code = process.wait()
         if return_code != 0:
             raise subprocess.CalledProcessError(return_code, command)
-
+            
     except subprocess.CalledProcessError as e:
-        raise PipelineError(f"Step failed: {' '.join(command)}")
+        raise PipelineError(f"Step failed ({e.returncode}): {' '.join(command)}")
     except Exception as e:
         raise PipelineError(f"Step failed: {' '.join(command)} - {e}")
 
