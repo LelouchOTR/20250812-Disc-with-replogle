@@ -494,7 +494,7 @@ class ModelTrainer:
             current_lr = float(self.optimizer.param_groups[0]['lr'])
             postfix += f" | LR: {current_lr:.2e}"
         
-        pb.set_postfix_str(postfix)
+        # Progress bar is only updated during training epoch, so we removed pb.set_postfix_str()
     
     def plot_training_curves(self) -> None:
         """Plot and save training curves."""
