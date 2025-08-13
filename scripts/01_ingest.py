@@ -56,18 +56,12 @@ class ReplogleDatasetDownloader:
     The dataset is available from Figshare repository.
     """
 
-    # Dataset URLs and checksums - Figshare sources (API listing + direct file option)
+    # Dataset URLs and checksums - Direct Figshare file for TianKampmann 2021 CRISPRi dataset
     DATASET_SOURCES = {
-        "figshare_k562": {
-            "url": "https://api.figshare.com/v2/articles/20029387",
-            "description": "Replogle 2022 K562 essential Perturb-seq dataset from Figshare (API listing)",
-            "expected_size": None,  # Will be determined during download
-            "sha256": None,  # Will be computed during download
-        },
-        # Direct single-file download entry (user-provided direct Figshare downloader link)
+        # Single direct Figshare downloader link (TianKampmann2021_CRISPRi.h5ad)
         "figshare_direct": {
             "url": "https://plus.figshare.com/ndownloader/files/42444315",
-            "description": "Direct Figshare file link provided by user (K562 h5ad)",
+            "description": "TianKampmann2021_CRISPRi.h5ad direct Figshare download",
             "expected_size": None,
             "sha256": None
         }
@@ -373,7 +367,7 @@ class ReplogleDatasetDownloader:
             Dictionary with download results and metadata
         """
         if source_priority is None:
-            source_priority = ["figshare_k562"]
+            source_priority = ["figshare_direct"]
 
         download_results = {}
         download_metadata = {
@@ -395,39 +389,9 @@ class ReplogleDatasetDownloader:
             url = source_info["url"]
 
             try:
-                if source_key == "figshare_k562":
-                    # Special handling for Figshare K562 files
-                    figshare_results = self.download_figshare_k562()
-
-                    # Add results to download_results
-                    for result in figshare_results:
-                        # Use a unique key for each file
-                        file_key = f"figshare_k562_{result['name']}"
-                        download_results[file_key] = result
-
-                        # Update metadata
-                        download_metadata["sources"][file_key] = {
-                            "url": result["file_path"],  # Already converted to string
-                            "description": f"K562 essential file: {result['name']}",
-                            "filename": result["name"],
-                            "sha256": result["sha256"],
-                            "size": result["size"],
-                            "download_success": True
-                        }
-
-                        download_metadata["files"][result["name"]] = {
-                            "source": file_key,
-                            "path": result["file_path"],  # Already converted to string
-                            "sha256": result["sha256"],
-                            "size": result["size"]
-                        }
-
-                        download_metadata["total_size"] += result["size"]
-
-                    logger.info(f"Successfully processed source: {source_key}")
-
-                elif source_key == "figshare_direct":
-                    # Direct download of a specific Figshare file URL
+                # Only direct file download is supported in this simplified ingestion flow.
+                # Download the provided Figshare file URL and record metadata.
+                if source_key == "figshare_direct":
                     # Derive filename from URL path
                     filename = Path(urlparse(url).path).name or "downloaded_file"
                     logger.info(f"Downloading direct file {filename} from {url}")
@@ -527,12 +491,12 @@ class ReplogleDatasetDownloader:
 
 def main():
     """Main function for data ingestion pipeline."""
-    parser = argparse.ArgumentParser(description="Download Replogle 2022 K562 essential Perturb-seq dataset")
+    parser = argparse.ArgumentParser(description="Download single-file dataset (TianKampmann 2021 CRISPRi h5ad)")
     parser.add_argument("--config", type=str, help="Path to configuration file")
     parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/raw",
                         help="Output directory for raw data")
-    parser.add_argument("--sources", nargs="+", default=["figshare_k562"],
-                        help="Data sources to download from")
+    parser.add_argument("--sources", nargs="+", default=["figshare_direct"],
+                        help="Data sources to download from (use 'figshare_direct' for the provided URL)")
     parser.add_argument("--validate", action="store_true", help="Validate downloaded files")
     parser.add_argument("--force-redownload", action="store_true", help="Force re-download even if files exist")
     parser.add_argument("--skip-integrity-checks", action="store_true",
