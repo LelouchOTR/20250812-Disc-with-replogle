@@ -55,32 +55,16 @@ class ReplogleDatasetDownloader:
     """
     Downloader for the Replogle 2022 K562 essential Perturb-seq dataset.
     
-    The dataset is available from multiple sources:
-    1. Original publication supplementary data
-    2. GEO (Gene Expression Omnibus) - GSE144623
-    3. Figshare repository
-    4. CZ CELLxGENE portal
+    The dataset is available from Figshare repository.
     """
     
-    # Dataset URLs and checksums
+    # Dataset URLs and checksums - Only Figshare source
     DATASET_SOURCES = {
         "figshare_k562": {
             "url": "https://api.figshare.com/v2/articles/20029387",
             "description": "Replogle 2022 K562 essential Perturb-seq dataset from Figshare",
             "expected_size": None,  # Will be determined during download
             "sha256": None,  # Will be computed during download
-        },
-        "geo_main": {
-            "url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE144nnn/GSE144623/suppl/GSE144623%5FK562%5Fessential%5Fraw%5Fsinglecell%5F01%2Eh5ad%2Egz",
-            "description": "K562 essential gene screen - raw single cell data (part 1)",
-            "expected_size": None,  # Will be determined during download
-            "sha256": None,  # Will be computed during download
-        },
-        "geo_metadata": {
-            "url": "https://ftp.ncbi.nlm.nih.gov/geo/series/GSE144nnn/GSE144623/suppl/GSE144623%5FK562%5Fessential%5Fmetadata%2Ecsv%2Egz",
-            "description": "K562 essential gene screen - metadata",
-            "expected_size": None,
-            "sha256": None,
         }
     }
     
@@ -345,7 +329,7 @@ class ReplogleDatasetDownloader:
             Dictionary with download results and metadata
         """
         if source_priority is None:
-            source_priority = ["figshare_k562", "geo_main", "geo_metadata"]
+            source_priority = ["figshare_k562"]
         
         download_results = {}
         download_metadata = {
@@ -395,46 +379,6 @@ class ReplogleDatasetDownloader:
                         }
                         
                         download_metadata["total_size"] += result["size"]
-                    
-                    logger.info(f"Successfully processed source: {source_key}")
-                else:
-                    # Generate filename from URL
-                    parsed_url = urlparse(url)
-                    filename = Path(parsed_url.path).name
-                    # Decode URL encoding for the actual filename
-                    import urllib.parse
-                    filename = urllib.parse.unquote(filename)
-                    if not filename:
-                        filename = f"{source_key}_data.dat"
-                    
-                    file_path, sha256_hash, file_size = self.download_file(url, filename)
-                    
-                    # Store results
-                    download_results[source_key] = {
-                        "file_path": str(file_path),  # Convert to string for JSON serialization
-                        "sha256": sha256_hash,
-                        "size": file_size,
-                        "success": True
-                    }
-                    
-                    # Update metadata
-                    download_metadata["sources"][source_key] = {
-                        "url": url,
-                        "description": source_info["description"],
-                        "filename": filename,
-                        "sha256": sha256_hash,
-                        "size": file_size,
-                        "download_success": True
-                    }
-                    
-                    download_metadata["files"][filename] = {
-                        "source": source_key,
-                        "path": str(file_path),  # Convert to string for JSON serialization
-                        "sha256": sha256_hash,
-                        "size": file_size
-                    }
-                    
-                    download_metadata["total_size"] += file_size
                     
                     logger.info(f"Successfully processed source: {source_key}")
                 
