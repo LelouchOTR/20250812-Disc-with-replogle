@@ -151,12 +151,18 @@ class ModelTrainer:
         adata_train = ad.read_h5ad(train_file)
         logger.info(f"Loaded training data: {adata_train.shape}")
         
-        # Load validation data
+        # Load validation data - check for both possible filenames
         val_file = data_dir / 'validation_data.h5ad'
-        if not val_file.exists():
-            raise TrainingError(f"Validation data not found: {val_file}")
+        alt_val_file = data_dir / 'val_data.h5ad'
         
-        adata_val = ad.read_h5ad(val_file)
+        if val_file.exists():
+            adata_val = ad.read_h5ad(val_file)
+        elif alt_val_file.exists():
+            adata_val = ad.read_h5ad(alt_val_file)
+            logger.info(f"Loaded validation data (alternative filename): {adata_val.shape}")
+        else:
+            raise TrainingError(f"Validation data not found. Checked both {val_file} and {alt_val_file}")
+        
         logger.info(f"Loaded validation data: {adata_val.shape}")
         
         # Create data loaders
