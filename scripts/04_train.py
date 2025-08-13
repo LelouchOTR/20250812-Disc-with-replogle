@@ -315,8 +315,13 @@ class ModelTrainer:
         
         epoch_losses = defaultdict(list)
         
-        # Progress bar
-        pbar = tqdm(self.train_loader, desc=f'Epoch {epoch+1}/{self.epochs}')
+        # Compact progress bar format
+        pbar = tqdm(
+            self.train_loader, 
+            desc=f"[{epoch+1}/{self.epochs}]",
+            bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{remaining}]',
+            leave=False
+        )
         
         for batch_idx, batch in enumerate(pbar):
             # Move batch to device
@@ -351,13 +356,13 @@ class ModelTrainer:
             for key, value in loss_dict.items():
                 epoch_losses[key].append(value.item())
             
-            # Update progress bar
-            pbar.set_postfix({
-                'Loss': f"{total_loss.item():.4f}",
-                'Recon': f"{loss_dict['reconstruction_loss'].item():.4f}",
-                'KL': f"{loss_dict['kl_loss'].item():.4f}",
-                'Disc': f"{loss_dict['discrepancy_loss'].item():.4f}"
-            })
+            # Update bar postfix
+            pbar.set_postfix_str(
+                f"L: {total_loss.item():,.0f} "
+                f"R: {loss_dict['reconstruction_loss'].item():,.0f} "
+                f"K: {loss_dict['kl_loss'].item():,.0f} "
+                f"D: {loss_dict['discrepancy_loss'].item():,.0f}"
+            )
         
         # Compute epoch averages
         epoch_metrics = {}
@@ -477,18 +482,19 @@ class ModelTrainer:
             for key, value in val_metrics.items():
                 self.val_history[key].append(value)
         
-        # Print metrics
+        # Print progress to console using tqdm
         train_loss = train_metrics.get('total_loss', 0)
-        log_msg = f"Epoch {epoch+1:3d}/{self.epochs} - Train Loss: {train_loss:.4f}"
-        
+        postfix = f"TL: {train_loss:.0f}"
+
         if val_metrics:
             val_loss = val_metrics.get('total_loss', 0)
-            log_msg += f" - Val Loss: {val_loss:.4f}"
-        
+            postfix += f" | VL: {val_loss:.0f}"
+
         if self.optimizer is not None:
             current_lr = float(self.optimizer.param_groups[0]['lr'])
-            log_msg += f" - LR: {current_lr:.2e}"
-        logger.info(log_msg)
+            postfix += f" | LR: {current_lr:.2e}"
+        
+        pb.set_postfix_str(postfix)
     
     def plot_training_curves(self) -> None:
         """Plot and save training curves."""

@@ -540,7 +540,7 @@ class DiscrepancyVAE(nn.Module):
             checkpoint['metrics'] = metrics
         
         torch.save(checkpoint, filepath)
-        logger.info(f"Saved checkpoint to {filepath}")
+        logger.info(f"Saved checkpoint to {filepath.name}")
     
     @classmethod
     def load_checkpoint(cls, filepath: Union[str, Path], device: torch.device = None) -> Tuple['DiscrepancyVAE', Dict]:
