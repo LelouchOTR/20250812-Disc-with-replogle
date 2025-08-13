@@ -266,6 +266,20 @@ class ReplogleDatasetDownloader:
                 filename = f["name"]
                 file_path = self.output_dir / filename
                 
+                # Check if file already exists
+                if file_path.exists():
+                    logger.info(f"File {filename} already exists, checking integrity...")
+                    existing_hash, existing_size = self._compute_file_hash_and_size(file_path)
+                    logger.info(f"Using existing file: {filename} (SHA256: {existing_hash})")
+                    results.append({
+                        "name": filename,
+                        "file_path": str(file_path),
+                        "sha256": existing_hash,
+                        "size": existing_size,
+                        "success": True
+                    })
+                    continue
+                
                 logger.info(f"Downloading {filename} ...")
                 
                 # Get file size for progress bar
