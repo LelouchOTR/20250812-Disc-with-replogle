@@ -9,9 +9,6 @@ and stores raw data in the data/raw/ directory.
 Reference:
 Replogle, J.M., Norman, T.M., Xu, A. et al. Combinatorial single-cell CRISPR screens 
 by direct guide RNA capture and targeted sequencing. Nat Biotechnol 38, 954–961 (2020).
-https://doi.org/10.1038/s41587-020-0470-y
-
-Dataset: Mapping information-rich genotype-to-phenotype maps by genome-scale Perturb-seq
 https://doi.org/10.1016/j.cell.2022.05.013
 """
 
