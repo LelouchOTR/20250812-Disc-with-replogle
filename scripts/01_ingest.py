@@ -255,7 +255,8 @@ class ReplogleDatasetDownloader:
             target_files = []
             for f in files:
                 name = f.get("name", "")
-                if "K562_essential" in name and name.endswith(".h5ad"):
+                # Skip bulk data files - retain only single-cell data
+                if "K562_essential" in name and name.endswith(".h5ad") and "bulk" not in name:
                     target_files.append({
                         "name": name,
                         "download_url": f.get("download_url")
