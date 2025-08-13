@@ -8,7 +8,6 @@
 #SBATCH --ntasks=1
 #SBATCH --time=24:00:00
 #SBATCH --partition=gpu_normal_stud
-#SBATCH --constraint="turing|ampere"
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=128G
 #SBATCH --gres=gpu:1
@@ -16,14 +15,8 @@
 # Source conda
 source /home/mohammad/Downloads/nobackup/anacondaex/etc/profile.d/conda.sh
 
-# Activate environment (adjust name as needed)
-conda activate scvi-env
-
-# GPU debug info - verify GPU availability
-echo "===== GPU Debugging Information ====="
-nvidia-smi --query-gpu=name,memory.total --format=csv
-python3 -c "import torch; print(f'PyTorch GPU: {torch.cuda.is_available()}'); print(f'Device Name: {torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"None\"}')"
-echo "===================================="
+# Activate environment
+conda activate disc-with-replogle
 
 # Set working directory to project root
 cd /home/mohammad/Documents/2025_HiWi/20250812-Disc-with-replogle
