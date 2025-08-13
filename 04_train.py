@@ -270,8 +270,8 @@ class ModelTrainer:
                     self.optimizer,
                     mode='min',
                     factor=float(self.scheduler_params.get('factor', 0.5)),
-                    patience=int(self.scheduler_params.get('patience', 10)),
-                    verbose=True
+                    patience=int(self.scheduler_params.get('patience', 10))
+                    # Removed 'verbose' parameter as it's not supported in some PyTorch versions
                 )
             elif self.scheduler_type == 'cosine':
                 self.scheduler = optim.lr_scheduler.CosineAnnealingLR(
