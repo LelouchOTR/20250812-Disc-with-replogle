@@ -1,44 +1,99 @@
-# Data processing configuration for Replogle 2022 K562 Perturb-seq dataset
+# Data processing configuration for single-cell perturbation analysis pipeline
+# Configuration for quality control, guide filtering, and normalization
 
+# Quality control thresholds for cell and gene filtering
 qc_thresholds:
-  # Cell-level QC filters
-  min_genes_per_cell: 50      # Reduced from 200 - more permissive for this dataset
-  max_genes_per_cell: 10000   # Increased from 8000
-  min_total_counts_per_cell: 100    # Reduced from 1000 significantly
-  max_total_counts_per_cell: 100000 # Increased from 50000
-  max_mitochondrial_fraction: 0.3   # Increased from 0.2
+  # Cell filtering criteria
+  min_genes_per_cell: 50          # Minimum number of genes expressed per cell (decreased from 200)
+  max_genes_per_cell: 10000       # Maximum number of genes expressed per cell (increased from 8000)
+  min_cells_per_gene: 3           # Minimum number of cells expressing each gene
+  max_mitochondrial_fraction: 0.3 # Maximum fraction of mitochondrial gene expression per cell (increased from 0.2)
   
-  # Gene-level QC filters  
-  min_cells_per_gene: 3
+  # Additional QC metrics
+  min_total_counts_per_cell: 100  # Minimum total UMI counts per cell (decreased from 1000)
+  max_total_counts_per_cell: 100000 # Maximum total UMI counts per cell (increased from 50000)
 
+# Guide RNA filtering and assignment parameters
 guide_filtering:
-  # Guide assignment and filtering parameters
-  max_guides_per_cell: 3
-  min_cells_per_guide: 5      # Reduced from 10 for better retention
-  control_guide_names:
+  min_guide_efficiency: 0.1       # Minimum guide efficiency score (if available)
+  max_guides_per_cell: 3         # Maximum number of guides assigned per cell
+  min_cells_per_guide: 5         # Minimum number of cells per guide for inclusion (decreased from 10)
+  
+  # Guide assignment policy
+  assignment_method: "top_guide"  # Options: "top_guide", "multi_guide", "threshold"
+  assignment_threshold: 0.5      # Threshold for guide assignment (if using threshold method)
+  
+  # Control guide handling
+  control_guide_names:           # Names/patterns for control guides
     - "non-targeting"
     - "scrambled"
     - "control"
     - "NT"
 
-gene_filtering:
-  # Additional gene filtering options
-  filter_mitochondrial: true
-  filter_ribosomal: true
-  min_expression_level: 0.01
-
+# Normalization and transformation parameters
 normalization:
-  # Normalization and transformation parameters
-  target_sum: 10000
-  log_transform: true
-  hvg_selection: true
-  hvg_method: "seurat_v3"
-  hvg_n_top_genes: 2000
+  # Library size normalization
+  target_sum: 10000              # Target sum for library size normalization (CPM scaling)
+  normalize_per_cell: true       # Whether to normalize per cell
+  
+  # Log transformation
+  log_transform: true            # Whether to apply log1p transformation
+  log_base: "natural"            # Log base: "natural", "log2", "log10"
+  
+  # Highly variable genes
+  hvg_selection: true            # Whether to select highly variable genes
+  hvg_method: "seurat_v3"        # Method for HVG selection: "seurat", "seurat_v3", "cell_ranger"
+  hvg_n_top_genes: 2000         # Number of top highly variable genes to select
+  hvg_min_mean: 0.0125          # Minimum mean expression for HVG
+  hvg_max_mean: 3               # Maximum mean expression for HVG
+  hvg_min_disp: 0.5             # Minimum dispersion for HVG
 
+# Data splitting parameters
 data_splitting:
-  # Data splitting configuration
+  # Random seed for reproducible splitting
+  random_seed: 42
+  
+  # Splitting strategy
+  split_method: "random"         # Options: "random", "stratified", "guide_balanced"
+  
+  # Split proportions (must sum to 1.0)
   train_fraction: 0.7
   val_fraction: 0.15
   test_fraction: 0.15
-  random_seed: 42
-  stratify_by: "guide_identity"
+  
+  # Stratification parameters (if using stratified splitting)
+  stratify_by: "guide_identity"  # Column to stratify by
+  min_samples_per_stratum: 5     # Minimum samples per stratum
+
+# Gene filtering and selection
+gene_filtering:
+  # Basic gene filtering
+  filter_mitochondrial: true     # Whether to filter mitochondrial genes
+  filter_ribosomal: true         # Whether to filter ribosomal genes
+  filter_pseudogenes: true       # Whether to filter pseudogenes
+  
+  # Gene biotype filtering
+  allowed_biotypes:             # Allowed gene biotypes (if available)
+    - "protein_coding"
+    - "lncRNA"
+    - "miRNA"
+  
+  # Expression-based filtering
+  min_expression_level: 0.01     # Minimum expression level across all cells
+  min_expression_cells: 10      # Minimum number of cells expressing the gene
+
+# Batch effect correction (if applicable)
+batch_correction:
+  enabled: false                 # Whether to apply batch correction
+  batch_key: "batch"            # Column name for batch information
+  method: "combat"              # Batch correction method: "combat", "harmony", "scanorama"
+  
+# Output settings
+output:
+  save_raw: true                # Whether to save raw data
+  save_intermediate: true       # Whether to save intermediate processing steps
+  compression: "gzip"           # Compression method for output files
+  
+  # File formats
+  adata_format: "h5ad"          # AnnData format: "h5ad", "zarr"
+  metadata_format: "csv"        # Metadata format: "csv", "tsv", "json"
