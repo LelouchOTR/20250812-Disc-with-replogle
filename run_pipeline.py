@@ -182,14 +182,29 @@ def run_process(config: dict, run_dirs: dict, seed: int):
     logger.info("--- Running Processing Step ---")
     raw_data_dir = run_dirs.get('raw')
 
-    # Find the main data file
-    raw_data_file = ""
-    for f in os.listdir(raw_data_dir):
-        if f.endswith('.h5ad.gz') or f.endswith('.h5ad'):
-            raw_data_file = os.path.join(raw_data_dir, f)
-            break
-    if not raw_data_file:
-        raise PipelineError("Could not find raw data file in raw data directory.")
+    # Find the main data file - try different naming patterns
+    raw_data_files = [f for f in os.listdir(raw_data_dir) 
+                     if f.endswith('.h5ad.gz') or f.endswith('.h5ad') or 'h5ad' in f]
+        
+    if not raw_data_files:
+        # If no files match patterns, try all files
+        all_files = [f for f in os.listdir(raw_data_dir)]
+        if len(all_files) == 1:
+            raw_data_file = os.path.join(raw_data_dir, all_files[0])
+            logger.warning(f"Using unexpected file as data: {all_files[0]}")
+        else:
+            raise PipelineError(f"Could not find raw data file in {raw_data_dir}")
+    elif len(raw_data_files) > 1:
+        # Prefer .h5ad files
+        h5ad_files = [f for f in raw_data_files if f.endswith('.h5ad')]
+        if h5ad_files:
+            raw_data_file = os.path.join(raw_data_dir, h5ad_files[0])
+            logger.warning(f"Multiple data files found, using: {h5ad_files[0]}")
+        else:
+            raw_data_file = os.path.join(raw_data_dir, raw_data_files[0])
+            logger.warning(f"Multiple data files found, using: {raw_data_files[0]}")
+    else:
+        raw_data_file = os.path.join(raw_data_dir, raw_data_files[0])
 
     output_dir = run_dirs.get('processed')
     cmd = [

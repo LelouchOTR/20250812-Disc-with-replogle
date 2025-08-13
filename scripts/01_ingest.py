@@ -396,7 +396,9 @@ class ReplogleDatasetDownloader:
                     filename = Path(urlparse(url).path).name or "downloaded_file"
                     logger.info(f"Downloading direct file {filename} from {url}")
 
-                    # Use existing download_file helper which streams and computes SHA256
+                    # Ensure filename ends with .h5ad
+                    if not filename.endswith('.h5ad'):
+                        filename += '.h5ad'
                     file_path, sha256_hash, file_size = self.download_file(url, filename)
 
                     result = {
