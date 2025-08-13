@@ -799,6 +799,20 @@ def main():
     # Set random seed
     set_global_seed(args.seed)
     
+    # Check if output directory exists and contains graph files
+    output_dir = Path(args.output_dir)
+    graph_exists = (
+        output_dir.exists() and 
+        any(output_dir.glob("gene_adjacency_graph.*")) and
+        (output_dir / "adjacency_matrix.npz").exists() and
+        (output_dir / "node_mapping.json").exists()
+    )
+    
+    if graph_exists and not args.force_refresh:
+        logger.info("Graph files already exist in output directory. Skipping graph generation.")
+        logger.info(f"Output directory: {output_dir}")
+        return 0
+    
     # Load configuration
     try:
         config = load_config(args.config)
