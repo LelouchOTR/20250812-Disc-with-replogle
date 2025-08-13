@@ -56,13 +56,20 @@ class ReplogleDatasetDownloader:
     The dataset is available from Figshare repository.
     """
 
-    # Dataset URLs and checksums - Only Figshare source
+    # Dataset URLs and checksums - Figshare sources (API listing + direct file option)
     DATASET_SOURCES = {
         "figshare_k562": {
             "url": "https://api.figshare.com/v2/articles/20029387",
-            "description": "Replogle 2022 K562 essential Perturb-seq dataset from Figshare",
+            "description": "Replogle 2022 K562 essential Perturb-seq dataset from Figshare (API listing)",
             "expected_size": None,  # Will be determined during download
             "sha256": None,  # Will be computed during download
+        },
+        # Direct single-file download entry (user-provided direct Figshare downloader link)
+        "figshare_direct": {
+            "url": "https://plus.figshare.com/ndownloader/files/42444315",
+            "description": "Direct Figshare file link provided by user (K562 h5ad)",
+            "expected_size": None,
+            "sha256": None
         }
     }
 
@@ -416,6 +423,46 @@ class ReplogleDatasetDownloader:
                         }
 
                         download_metadata["total_size"] += result["size"]
+
+                    logger.info(f"Successfully processed source: {source_key}")
+
+                elif source_key == "figshare_direct":
+                    # Direct download of a specific Figshare file URL
+                    # Derive filename from URL path
+                    filename = Path(urlparse(url).path).name or "downloaded_file"
+                    logger.info(f"Downloading direct file {filename} from {url}")
+
+                    # Use existing download_file helper which streams and computes SHA256
+                    file_path, sha256_hash, file_size = self.download_file(url, filename)
+
+                    result = {
+                        "name": filename,
+                        "file_path": str(file_path),
+                        "sha256": sha256_hash,
+                        "size": file_size,
+                        "success": True
+                    }
+
+                    file_key = f"figshare_direct_{filename}"
+                    download_results[file_key] = result
+
+                    download_metadata["sources"][file_key] = {
+                        "url": str(file_path),
+                        "description": source_info.get("description", f"Direct download: {filename}"),
+                        "filename": filename,
+                        "sha256": sha256_hash,
+                        "size": file_size,
+                        "download_success": True
+                    }
+
+                    download_metadata["files"][filename] = {
+                        "source": file_key,
+                        "path": str(file_path),
+                        "sha256": sha256_hash,
+                        "size": file_size
+                    }
+
+                    download_metadata["total_size"] += file_size
 
                     logger.info(f"Successfully processed source: {source_key}")
 
