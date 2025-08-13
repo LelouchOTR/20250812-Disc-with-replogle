@@ -215,7 +215,9 @@ def main():
     """Main function for model evaluation pipeline."""
     parser = argparse.ArgumentParser(description="Evaluate DiscrepancyVAE model")
     parser.add_argument("--config", type=str, default="pipeline_config", help="Configuration file name")
-    parser.add_argument("--model-path", type=str, required=True, help="Path to the trained model checkpoint")
+    parser.add_argument("--model-path", type=str, 
+                       default="/data/gidb/shared/results/tmp/replogle/models/best_model.pth",
+                       help="Path to the trained model checkpoint")
     parser.add_argument("--data-path", type=str, required=True, help="Path to the test data file (h5ad)")
     parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/evaluation", help="Output directory")
     parser.add_argument("--device", type=str, help="Device to use (cuda/cpu)")

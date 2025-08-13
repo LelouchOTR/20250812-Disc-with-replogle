@@ -83,11 +83,12 @@ class ModelTrainer:
         self.device = device
         
         # Create output directories
-        self.models_dir = self.output_dir / 'models'
+        self.models_dir = self.output_dir  # Models go directly in output dir
         self.logs_dir = self.output_dir / 'logs'
         self.plots_dir = self.output_dir / 'plots'
         
-        for dir_path in [self.models_dir, self.logs_dir, self.plots_dir]:
+        # Only create logs and plots subdirectories
+        for dir_path in [self.logs_dir, self.plots_dir]:
             dir_path.mkdir(parents=True, exist_ok=True)
         
         # Extract training parameters
@@ -315,15 +316,12 @@ class ModelTrainer:
         
         epoch_losses = defaultdict(list)
         
-        # Compact progress bar format
-        pbar = tqdm(
-            self.train_loader, 
-            desc=f"[{epoch+1}/{self.epochs}]",
-            bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt} [{remaining}]',
-            leave=False
-        )
+        # Single progress bar for epoch with dynamic columns
+        pbar = tqdm(total=len(self.train_loader), 
+                   desc=f"Epoch {epoch+1}/{self.epochs}",
+                   dynamic_ncols=True)
         
-        for batch_idx, batch in enumerate(pbar):
+        for batch_idx, batch in enumerate(self.train_loader):
             # Move batch to device
             x = batch['x'].to(self.device)
             is_control = batch['is_control'].to(self.device)
@@ -356,13 +354,16 @@ class ModelTrainer:
             for key, value in loss_dict.items():
                 epoch_losses[key].append(value.item())
             
-            # Update bar postfix
-            pbar.set_postfix_str(
-                f"L: {total_loss.item():,.0f} "
-                f"R: {loss_dict['reconstruction_loss'].item():,.0f} "
-                f"K: {loss_dict['kl_loss'].item():,.0f} "
-                f"D: {loss_dict['discrepancy_loss'].item():,.0f}"
-            )
+            # Update progress bar
+            pbar.update(1)
+            pbar.set_postfix({
+                'L': f"{total_loss.item():.0f}",
+                'RL': f"{loss_dict['reconstruction_loss'].item():.0f}", 
+                'KL': f"{loss_dict['kl_loss'].item():.0f}",
+                'DL': f"{loss_dict['discrepancy_loss'].item():.0f}"
+            })
+        
+        pbar.close()
         
         # Compute epoch averages
         epoch_metrics = {}
