@@ -103,13 +103,18 @@ class ModelEvaluator:
     def compute_reconstruction_metrics(self):
         logger.info("Computing reconstruction metrics...")
         
-        X_test = torch.from_numpy(self.adata_test.X.toarray()).float().to(self.device)
+        if sparse.issparse(self.adata_test.X):
+            X_true = self.adata_test.X.toarray()
+        else:
+            X_true = self.adata_test.X
+            
+        X_test = torch.from_numpy(X_true).float().to(self.device)
         
         with torch.no_grad():
             model_output = self.model(X_test)
             X_recon = model_output['x_recon'].cpu().numpy()
             
-        mse = mean_squared_error(self.adata_test.X.toarray(), X_recon)
+        mse = mean_squared_error(X_true, X_recon)
         self.metrics['reconstruction_mse'] = mse
         logger.info(f"Reconstruction MSE: {mse:.4f}")
 
