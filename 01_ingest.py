@@ -68,18 +68,20 @@ class ReplogleDatasetDownloader:
         }
     }
     
-    def __init__(self, output_dir: Path, config: Optional[Dict] = None):
+    def __init__(self, output_dir: Path, config: Optional[Dict] = None, skip_integrity_checks: bool = False):
         """
         Initialize the dataset downloader.
         
         Args:
             output_dir: Directory to save downloaded files
             config: Configuration dictionary (optional)
+            skip_integrity_checks: Whether to skip file integrity verification
         """
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
         self.config = config or {}
+        self.skip_integrity_checks = skip_integrity_checks
         self.session = requests.Session()
         
         # Set up session with retry strategy
@@ -96,6 +98,8 @@ class ReplogleDatasetDownloader:
         self.session.mount("https://", adapter)
         
         logger.info(f"Initialized ReplogleDatasetDownloader with output dir: {self.output_dir}")
+        if self.skip_integrity_checks:
+            logger.info("Integrity checks are SKIPPED for faster debugging")
     
     def download_file(self, url: str, filename: str, expected_size: Optional[int] = None) -> Tuple[Path, str, int]:
         """
@@ -115,6 +119,10 @@ class ReplogleDatasetDownloader:
         if file_path.exists():
             logger.info(f"File {filename} already exists, checking integrity...")
             existing_hash, existing_size = self._compute_file_hash_and_size(file_path)
+            
+            if self.skip_integrity_checks:
+                logger.info(f"Using existing file: {filename} (integrity checks skipped)")
+                return file_path, existing_hash, existing_size
             
             if expected_size is None or existing_size == expected_size:
                 logger.info(f"Using existing file: {filename}")
@@ -207,6 +215,10 @@ class ReplogleDatasetDownloader:
         Returns:
             True if checksum matches, False otherwise
         """
+        if self.skip_integrity_checks:
+            logger.info(f"Skipping integrity check for {file_path.name}")
+            return True
+            
         if not file_path.exists():
             logger.error(f"File not found for verification: {file_path}")
             return False
@@ -270,6 +282,18 @@ class ReplogleDatasetDownloader:
                 if file_path.exists():
                     logger.info(f"File {filename} already exists, checking integrity...")
                     existing_hash, existing_size = self._compute_file_hash_and_size(file_path)
+                    
+                    if self.skip_integrity_checks:
+                        logger.info(f"Using existing file: {filename} (integrity checks skipped)")
+                        results.append({
+                            "name": filename,
+                            "file_path": str(file_path),
+                            "sha256": existing_hash,
+                            "size": existing_size,
+                            "success": True
+                        })
+                        continue
+                    
                     logger.info(f"Using existing file: {filename} (SHA256: {existing_hash})")
                     results.append({
                         "name": filename,
@@ -434,6 +458,10 @@ class ReplogleDatasetDownloader:
         Returns:
             True if all files are valid, False otherwise
         """
+        if self.skip_integrity_checks:
+            logger.info("Skipping dataset validation for faster debugging")
+            return True
+            
         all_valid = True
         
         for source_key, result in download_results.items():
@@ -460,6 +488,7 @@ def main():
                        help="Data sources to download from")
     parser.add_argument("--validate", action="store_true", help="Validate downloaded files")
     parser.add_argument("--force-redownload", action="store_true", help="Force re-download even if files exist")
+    parser.add_argument("--skip-integrity-checks", action="store_true", help="Skip file integrity verification for faster debugging")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
     
     args = parser.parse_args()
@@ -485,7 +514,7 @@ def main():
     
     try:
         # Initialize downloader
-        downloader = ReplogleDatasetDownloader(output_dir, config)
+        downloader = ReplogleDatasetDownloader(output_dir, config, args.skip_integrity_checks)
         
         # Remove existing files if force download
         if args.force_redownload:
