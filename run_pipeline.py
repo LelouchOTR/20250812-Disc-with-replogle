@@ -80,7 +80,7 @@ def run_ingest(config: dict, seed: int):
     logger.info("--- Running Ingestion Step ---")
     output_dir = "/data/gidb/shared/results/tmp/replogle/raw"
     cmd = [
-        "python", "01_ingest.py",
+        "python", "scripts/01_ingest.py",
         "--output-dir", output_dir,
         "--seed", str(seed)
     ]
@@ -103,7 +103,7 @@ def run_process(config: dict, seed: int):
         
     output_dir = "/data/gidb/shared/results/tmp/replogle/processed"
     cmd = [
-        "python", "02_process.py",
+        "python", "scripts/02_process.py",
         "--input", raw_data_file,
         "--output-dir", output_dir,
         "--config", "data_config",
@@ -118,7 +118,7 @@ def run_graphs(config: dict, seed: int):
     logger.info("--- Running Graph Generation Step ---")
     output_dir = "/data/gidb/shared/results/tmp/replogle/graphs"
     cmd = [
-        "python", "03_graphs.py",
+        "python", "scripts/03_graphs.py",
         "--output-dir", output_dir,
         "--config", "graph_config",
         "--seed", str(seed)
@@ -135,7 +135,7 @@ def run_train(config: dict, seed: int):
     graph_dir = "/data/gidb/shared/results/tmp/replogle/graphs"
     
     cmd = [
-        "python", "04_train.py",
+        "python", "scripts/04_train.py",
         "--data-dir", data_dir,
         "--output-dir", model_dir,
         "--config", "model_config",
@@ -156,7 +156,7 @@ def run_evaluate(config: dict, seed: int):
     output_dir = "/data/gidb/shared/results/tmp/replogle/evaluation"
     
     cmd = [
-        "python", "05_eval.py",
+        "python", "scripts/05_eval.py",
         "--model-path", model_path,
         "--data-path", data_path,
         "--output-dir", output_dir,
