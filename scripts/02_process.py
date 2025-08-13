@@ -356,7 +356,12 @@ class SingleCellDataProcessor:
 
             # Calculate variance for each gene
             if sparse.issparse(adata.X):
-                gene_var = np.array(adata.X.var(axis=0)).flatten()
+                # Manual sparse variance calculation
+                mean_per_gene = np.array(adata.X.mean(axis=0)).flatten()
+                sq_data = adata.X.copy()
+                sq_data.data **= 2  # Square the elements
+                mean_sq_per_gene = np.array(sq_data.mean(axis=0)).flatten()
+                gene_var = mean_sq_per_gene - (mean_per_gene ** 2)
             else:
                 gene_var = np.var(adata.X, axis=0)
 
