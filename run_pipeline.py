@@ -49,7 +49,7 @@ def run_step(command: list):
             universal_newlines=True,
             bufsize=1
         )
-        
+
         # Stream output in real-time
         while True:
             output = process.stdout.readline()
@@ -58,17 +58,17 @@ def run_step(command: list):
             if output:
                 print(output.strip())
                 sys.stdout.flush()
-        
+
         # Capture any remaining stderr output
         stderr_output = process.stderr.read()
         if stderr_output:
             logger.warning(stderr_output)
-            
+
         # Wait for process to complete and check return code
         return_code = process.poll()
         if return_code != 0:
             raise subprocess.CalledProcessError(return_code, command)
-            
+
     except subprocess.CalledProcessError as e:
         raise PipelineError(f"Step failed: {' '.join(command)}")
     except Exception as e:
@@ -100,7 +100,7 @@ def run_process(config: dict, seed: int):
             break
     if not raw_data_file:
         raise PipelineError("Could not find raw data file in raw data directory.")
-        
+
     output_dir = "/data/gidb/shared/results/tmp/replogle/processed"
     cmd = [
         "python", "scripts/02_process.py",
@@ -133,7 +133,7 @@ def run_train(config: dict, seed: int):
     data_dir = "/data/gidb/shared/results/tmp/replogle/processed"
     model_dir = "/data/gidb/shared/results/tmp/replogle/models"
     graph_dir = "/data/gidb/shared/results/tmp/replogle/graphs"
-    
+
     cmd = [
         "python", "scripts/04_train.py",
         "--data-dir", data_dir,
@@ -143,7 +143,7 @@ def run_train(config: dict, seed: int):
     ]
     if os.path.exists(graph_dir):
         cmd.extend(["--graph-dir", graph_dir])
-        
+
     run_step(cmd)
     logger.info("--- Training Step Complete ---")
 
@@ -154,7 +154,7 @@ def run_evaluate(config: dict, seed: int):
     model_path = "/data/gidb/shared/results/tmp/replogle/models/best_model.pth"
     data_path = "/data/gidb/shared/results/tmp/replogle/processed/test_data.h5ad"
     output_dir = "/data/gidb/shared/results/tmp/replogle/evaluation"
-    
+
     cmd = [
         "python", "scripts/05_eval.py",
         "--model-path", model_path,
@@ -176,21 +176,22 @@ def main():
         choices=['all', 'ingest', 'process', 'graphs', 'train', 'evaluate'],
         help="Pipeline steps to run."
     )
-    parser.add_argument("--config", type=str, default="pipeline_config", help="Main pipeline configuration file (without path or extension).")
+    parser.add_argument("--config", type=str, default="pipeline_config",
+                        help="Main pipeline configuration file (without path or extension).")
     parser.add_argument("--seed", type=int, default=42, help="Global random seed.")
-    
+
     args = parser.parse_args()
-    
+
     set_global_seed(args.seed)
-    
+
     config = load_config(args.config)
-    
+
     steps_to_run = args.steps
     if 'all' in steps_to_run:
         steps_to_run = ['ingest', 'process', 'graphs', 'train', 'evaluate']
-        
+
     logger.info(f"Running pipeline with steps: {', '.join(steps_to_run)}")
-    
+
     for step in steps_to_run:
         if step == 'ingest':
             run_ingest(config, args.seed)
@@ -202,7 +203,7 @@ def main():
             run_train(config, args.seed)
         elif step == 'evaluate':
             run_evaluate(config, args.seed)
-            
+
     logger.info("Pipeline finished successfully.")
 
 
