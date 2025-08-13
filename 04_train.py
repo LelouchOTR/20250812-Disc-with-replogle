@@ -290,7 +290,11 @@ class ModelTrainer:
         
         # Initialize tensorboard writer
         if TENSORBOARD_AVAILABLE:
-            self.writer = SummaryWriter(log_dir=self.logs_dir / 'tensorboard')
+            try:
+                self.writer = SummaryWriter(log_dir=self.logs_dir / 'tensorboard')
+            except Exception as e:
+                logger.warning(f"Failed to initialize TensorBoard writer: {e}")
+                self.writer = None
         else:
             self.writer = None
         
@@ -451,17 +455,18 @@ class ModelTrainer:
             train_metrics: Training metrics
             val_metrics: Validation metrics
         """
-        # Log to tensorboard
-        for key, value in train_metrics.items():
-            self.writer.add_scalar(f'Train/{key}', value, epoch)
-        
-        if val_metrics:
-            for key, value in val_metrics.items():
-                self.writer.add_scalar(f'Val/{key}', value, epoch)
-        
-        # Log learning rate
-        current_lr = float(self.optimizer.param_groups[0]['lr'])
-        self.writer.add_scalar('Learning_Rate', current_lr, epoch)
+        # Log to tensorboard (only if writer is available)
+        if self.writer is not None:
+            for key, value in train_metrics.items():
+                self.writer.add_scalar(f'Train/{key}', value, epoch)
+            
+            if val_metrics:
+                for key, value in val_metrics.items():
+                    self.writer.add_scalar(f'Val/{key}', value, epoch)
+            
+            # Log learning rate
+            current_lr = float(self.optimizer.param_groups[0]['lr'])
+            self.writer.add_scalar('Learning_Rate', current_lr, epoch)
         
         # Store in history
         for key, value in train_metrics.items():
@@ -479,7 +484,9 @@ class ModelTrainer:
             val_loss = val_metrics.get('total_loss', 0)
             log_msg += f" - Val Loss: {val_loss:.4f}"
         
-        log_msg += f" - LR: {current_lr:.2e}"
+        if self.optimizer is not None:
+            current_lr = float(self.optimizer.param_groups[0]['lr'])
+            log_msg += f" - LR: {current_lr:.2e}"
         logger.info(log_msg)
     
     def plot_training_curves(self) -> None:
