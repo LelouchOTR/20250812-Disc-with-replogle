@@ -327,7 +327,7 @@ class ModelTrainer:
             
             # Compute loss
             loss_dict = self.model.compute_loss(
-                x, model_output, is_control, perturbation_labels, self.adjacency_matrix
+                x, model_output, is_control, perturbation_labels
             )
             
             total_loss = loss_dict['total_loss']
@@ -387,7 +387,7 @@ class ModelTrainer:
                 
                 # Compute loss
                 loss_dict = self.model.compute_loss(
-                    x, model_output, is_control, perturbation_labels, self.adjacency_matrix
+                    x, model_output, is_control, perturbation_labels
                 )
                 
                 # Record losses
