@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 import numpy as np
 import pandas as pd
+from scipy import sparse
 import torch
 import anndata as ad
 import scanpy as sc
@@ -81,11 +82,17 @@ class ModelEvaluator:
         
         self.adata_test = ad.read_h5ad(data_path)
         logger.info(f"Loaded test data: {self.adata_test.shape}")
+        self.X_data_type = type(self.adata_test.X)  # Store array type
 
     def compute_latent_embeddings(self):
         logger.info("Computing latent embeddings...")
         
-        X_test = torch.from_numpy(self.adata_test.X.toarray()).float().to(self.device)
+        # Handle both sparse and dense formats
+        if sparse.issparse(self.adata_test.X):
+            X_test = torch.from_numpy(self.adata_test.X.toarray())
+        else:
+            X_test = torch.from_numpy(self.adata_test.X)
+        X_test = X_test.float().to(self.device)
         
         with torch.no_grad():
             self.latent_embeddings = self.model.get_latent_representation(X_test).cpu().numpy()
@@ -145,7 +152,10 @@ class ModelEvaluator:
         
         # Reconstruction quality plot
         logger.info("Generating reconstruction quality plot...")
-        X_test = self.adata_test.X.toarray()
+        if sparse.issparse(self.adata_test.X):
+            X_test = self.adata_test.X.toarray()
+        else:
+            X_test = self.adata_test.X
         with torch.no_grad():
             X_recon = self.model(torch.from_numpy(X_test).float().to(self.device))['x_recon'].cpu().numpy()
             
