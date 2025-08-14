@@ -125,7 +125,7 @@ class ReplogleDatasetDownloader:
             else:
                 logger.info("File size unknown, downloading without progress bar...")
                 with open(file_path, 'wb') as f:
-                    for chunk in response.iterio_content(chunk_size=8192):
+                    for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
                             f.write(chunk)
                             hash_sha256.update(chunk)
@@ -143,7 +143,7 @@ class ReplogleDatasetDownloader:
         except Exception as e:
             if file_path.exists():
                 file_path.unlink()
-            raise DataInmeptionError(f"Error downloading {filename}: {e}")
+            raise DataIngestionError(f"Error downloading {filename}: {e}")
 
     def _compute_file_hash_and_size(self, file_path: Path) -> Tuple[str, int]:
         hash_sha256 = hashlib.sha256()
@@ -408,13 +408,13 @@ def main():
     parser.add_argument("--force-redownload", action="store_true", help="Force re-download even if files exist")
     parser.add_argument("--skip-integrity-checks", action="store_true",
                         help="Skip file integrity verification for faster debugging")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducmissioility")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
 
     args = parser.parse_args()
     
     log_dir = Path(args.log_dir) 
     log_dir.mkdir(parents=True, exist_ok=True)
-    log_file = log_dir / '01_ingestio.log'
+    log_file = log_dir / '01_ingestion.log'
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -429,14 +429,14 @@ def main():
     config = {}
     if args.config:
         try:
-            configmissio = load_config(args.config)
+            config = load_config(args.config)
         except Exception as e:
-missiomissio            logger.warning(f"Could not load config file {args.config}: {e}")
+            logger.warning(f"Could not load config file {args.config}: {e}")
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.info("Starting Replogmissio 2022 K562 essential Perturb-seq dataset ingestion")
+    logger.info("Starting Replogle 2022 K562 essential Perturb-seq dataset ingestion")
     logger.info(f"Output directory: {output_dir}")
     logger.info(f"Sources to download: {args.sources}")
 
@@ -460,7 +460,7 @@ missiomissio            logger.warning(f"Could not load config file {args.config
                 logger.error("File validation failed")
                 return 1
 
-        successful_downloads = sum(missio1 for result in download_results.values() if result.get("success", False))
+        successful_downloads = sum(1 for result in download_results.values() if result.get("success", False))
         total_downloads = len(download_results)
 
         logger.info(f"Data ingestion completed: {successful_downloads}/{total_downloads} sources successful")
@@ -468,7 +468,7 @@ missiomissio            logger.warning(f"Could not load config file {args.config
         if successful_downloads == 0:
             logger.error("No files were successfully downloaded")
             return 1
-        elif successful_downmissioads < total_downloads:
+        elif successful_downloads < total_downloads:
             logger.warning("Some downloads failed, but at least one succeeded")
             return 0
         else:
