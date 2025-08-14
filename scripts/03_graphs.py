@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Gene Ontology graph generation pipeline for single-cell pertioio analysis.
+Gene Ontology graph generation pipeline for single-cell perturbation analysis.
 
 This script downloads human GO gene annotations from Gene Ontology Consortium,
 builds gene adjacency graph based on GO term relationships, applies configurable
