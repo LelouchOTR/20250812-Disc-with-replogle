@@ -123,6 +123,7 @@ class ModelTrainer:
         self.best_val_loss = float('inf')
         self.best_epoch = 0
         self.epochs_without_improvement = 0
+        self.val_epochs = []  # Store actual epoch numbers for validation
 
         logger.info(f"Initialized ModelTrainer with output dir: {output_dir}")
 
@@ -506,7 +507,7 @@ class ModelTrainer:
         # Plot total loss
         axes[0, 0].plot(self.train_history['total_loss'], label='Train', alpha=0.8)
         if self.val_history['total_loss']:
-            axes[0, 0].plot(self.val_history['total_loss'], label='Validation', alpha=0.8)
+            axes[0, 0].plot(self.val_epochs, self.val_history['total_loss'], label='Validation', alpha=0.8, marker='o')
         axes[0, 0].set_title('Total Loss')
         axes[0, 0].set_xlabel('Epoch')
         axes[0, 0].set_ylabel('Loss')
@@ -516,7 +517,7 @@ class ModelTrainer:
         # Plot reconstruction loss
         axes[0, 1].plot(self.train_history['reconstruction_loss'], label='Train', alpha=0.8)
         if self.val_history['reconstruction_loss']:
-            axes[0, 1].plot(self.val_history['reconstruction_loss'], label='Validation', alpha=0.8)
+            axes[0, 1].plot(self.val_epochs, self.val_history['reconstruction_loss'], label='Validation', alpha=0.8, marker='o')
         axes[0, 1].set_title('Reconstruction Loss')
         axes[0, 1].set_xlabel('Epoch')
         axes[0, 1].set_ylabel('Loss')
@@ -526,7 +527,7 @@ class ModelTrainer:
         # Plot KL loss
         axes[1, 0].plot(self.train_history['kl_loss'], label='Train', alpha=0.8)
         if self.val_history['kl_loss']:
-            axes[1, 0].plot(self.val_history['kl_loss'], label='Validation', alpha=0.8)
+            axes[1, 0].plot(self.val_epochs, self.val_history['kl_loss'], label='Validation', alpha=0.8, marker='o')
         axes[1, 0].set_title('KL Divergence Loss')
         axes[1, 0].set_xlabel('Epoch')
         axes[1, 0].set_ylabel('Loss')
@@ -536,7 +537,7 @@ class ModelTrainer:
         # Plot discrepancy loss
         axes[1, 1].plot(self.train_history['discrepancy_loss'], label='Train', alpha=0.8)
         if self.val_history['discrepancy_loss']:
-            axes[1, 1].plot(self.val_history['discrepancy_loss'], label='Validation', alpha=0.8)
+            axes[1, 1].plot(self.val_epochs, self.val_history['discrepancy_loss'], label='Validation', alpha=0.8, marker='o')
         axes[1, 1].set_title('Discrepancy Loss')
         axes[1, 1].set_xlabel('Epoch')
         axes[1, 1].set_ylabel('Loss')
@@ -659,6 +660,7 @@ class ModelTrainer:
                 # Validation phase
                 val_metrics = None
                 if epoch % self.validation_freq == 0 or epoch == self.epochs - 1:
+                    self.val_epochs.append(epoch)  # Track epoch number
                     val_metrics = self.validate_epoch(epoch)
 
                     # Check for improvement
