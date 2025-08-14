@@ -12,7 +12,7 @@ import os
 import sys
 import logging
 import argparse
-import jso
+import json
 import time
 from datetime import datetime
 from pathlib import Path
@@ -49,7 +49,7 @@ logger = logging.getLogger(__name__)
 
 
 class TrainingError(Exception):
-    """Custom exceptio for training errors."""
+    """Custom exception for training errors."""
     pass
 
 
@@ -153,7 +153,7 @@ class ModelTrainer:
         graph_dir = Path(graph_dir)
 
         adj_file = graph_dir / 'adjacency_matrix.npz'
-        nodes_file = graph_dir / 'node_mapping.jso'
+        nodes_file = graph_dir / 'node_mapping.json'
 
         if adj_file.exists() and nodes_file.exists():
             logger.info("Loading gene adjacency graph...")
@@ -162,7 +162,7 @@ class ModelTrainer:
             adj_matrix = sparse.load_npz(adj_file)
 
             with open(nodes_file, 'r') as f:
-                node_mapping = jso.load(f)
+                node_mapping = json.load(f)
 
             adj_tensor = torch.from_numpy(adj_matrix.toarray()).float()
 
@@ -238,7 +238,7 @@ class ModelTrainer:
         if TENSORBOARD_AVAILABLE:
             try:
                 self.writer = SummaryWriter(log_dir=tensorboard_dir)
-            except Exceptio as e:
+            except Exception as e:
                 logger.warning(f"Failed to initialize TensorBoard writer: {e}")
                 self.writer = None
         else:
@@ -253,7 +253,7 @@ class ModelTrainer:
 
         pbar = tqdm(total=len(self.train_loader),
                     desc=f"Epoch {epoch + 1}/{self.epochs}",
-                    positionio,
+                    position=0,
                     leave=True,
                     dynamic_ncols=True)
 
@@ -304,7 +304,7 @@ class ModelTrainer:
         epoch_losses = defaultdict(list)
 
         with torch.no_grad():
-            for batch in tqdm(self.val_loader, desc='Validation', positionio, leave=True):
+            for batch in tqdm(self.val_loader, desc='Validation', position=0, leave=True):
                 x = batch['x'].to(self.device)
                 is_control = batch['is_control'].to(self.device)
                 perturbation_labels = batch['perturbation_label'].to(self.device)
@@ -312,7 +312,7 @@ class ModelTrainer:
                 model_output = self.model(x)
 
                 loss_dict = self.model.compute_loss(
-                    x, model_output, is_control, pertio_labels
+                    x, model_output, is_control, perturbation_labels
                 )
 
                 for key, value in loss_dict.items():
@@ -449,9 +449,9 @@ class ModelTrainer:
             'device': str(self.device)
         }
 
-        summary_path = self.log_dir / 'training_summary.jso'
+        summary_path = self.log_dir / 'training_summary.json'
         with open(summary_path, 'w') as f:
-            jso.dump(summary, f, indent=2)
+            json.dump(summary, f, indent=2)
 
         if self.train_history:
             train_df = pd.DataFrame(self.train_history)
@@ -487,7 +487,7 @@ class ModelTrainer:
         self.start_epoch = int(checkpoint.get('epoch', 0)) + 1
         self.best_val_loss = float(checkpoint.get('metrics', {}).get('best_val_loss', float('inf')))
         self.best_epoch = int(checkpoint.get('metrics', {}).get('best_epoch', 0))
-        self.epochs_without_improlement = int(checkpoint.get('metrics', {}).get('epochs_without_improvement', 0))
+        self.epochs_without_improvement = int(checkpoint.get('metrics', {}).get('epochs_without_improvement', 0))
 
         train_history = checkpoint.get('metrics', {}).get('train_history', {})
         val_history = checkpoint.get('metrics', {}).get('val_history', {})
@@ -518,15 +518,15 @@ class ModelTrainer:
                     if val_loss < self.best_val_loss:
                         self.best_val_loss = val_loss
                         self.best_epoch = epoch
-                        self.epochs_without_improlement = 0
+                        self.epochs_without_improvement = 0
                         is_best = True
                     else:
-                        self.epochs_without_improlement += self.validation_freq
+                        self.epochs_without_improvement += self.validation_freq
                         is_best = False
 
-                    if self.epochs_without_improlement >= self.early_stopping_patience:
+                    if self.epochs_without_improvement >= self.early_stopping_patience:
                         logger.info(f"Early stopping at epoch {epoch + 1} "
-                                    f"(no improvement for {self.epochs_without_improlement} epochs)")
+                                    f"(no improvement for {self.epochs_without_improvement} epochs)")
                         break
 
                     self.save_checkpoint(epoch, is_best)
@@ -542,7 +542,7 @@ class ModelTrainer:
         except KeyboardInterrupt:
             logger.info("Training interrupted by user")
 
-        except Exceptio as e:
+        except Exception as e:
             logger.error(f"Training failed: {e}")
             raise
 
@@ -554,7 +554,7 @@ class ModelTrainer:
             self.save_training_summary()
 
             training_time = time.time() - start_time
-            logger.info(f"Training completed in {trainingio_time:.2f} seconds")
+            logger.info(f"Training completed in {training_time:.2f} seconds")
 
 
 def main():
@@ -596,7 +596,7 @@ def main():
 
     try:
         config = load_config(args.config)
-    except Exceptio as e:
+    except Exception as e:
         logger.error(f"Failed to load configuration: {e}")
         return 1
 
@@ -622,7 +622,7 @@ def main():
         logger.info("Training completed successfully")
         return 0
 
-    except Exceptio as e:
+    except Exception as e:
         logger.error(f"Training failed: {e}")
         return 1
 
