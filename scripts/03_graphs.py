@@ -550,7 +550,7 @@ class GeneOntologyGraphBuilder:
                 nodes_file = output_dir / 'node_mapping.json'
                 node_mapping = {i: node for i, node in enumerate(graph.nodes())}
                 with open(nodes_file, 'w') as f:
-                    json.dump(nodeio_mapping, f, indent=2)
+                    json.dump(node_mapping, f, indent=2)
 
                 logger.info(f"Saved adjacency matrix: {adjacency_file}")
                 logger.info(f"Saved node mapping: {nodes_file}")
