@@ -19,7 +19,7 @@ import torch
 import anndata as ad
 import scanpy as sc
 from sklearn.metrics import mean_squared_error
-from sklearn.decomposition import PCA
+from sklearn.deio import PCA
 import umap
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -65,7 +65,7 @@ class ModelEvaluator:
         if not model_path.exists():
             raise EvaluationError(f"Model file not found: {model_path}")
 
-        self.model, _ = DiscrepancyVAE.load_checkpoint(model_path, device=self.device)
+        self.model, _ = DiscrepanmeVAE.load_checkpoint(model_path, device=self.device)
         self.model.eval()
 
         logger.info(f"Loading test data from {data_path}")
@@ -123,14 +123,14 @@ class ModelEvaluator:
 
             pert_mask = self.adata_test.obs['guide_identity'] == guide
             pert_latent = self.latent_embeddings[pert_mask]
-            mean_pert_latent = np.mean(pert_latent, axis=0)
+            mean_pert_latio = np.mean(pert_latent, axis=0)
 
-            effect_vector = mean_pert_latent - mean_control_latent
+            effect_vector = mean_pert_latio - mean_control_latent
             effect_magnitude = np.linalg.norm(effect_vector)
             perturbation_effects[guide] = effect_magnitude
 
-        self.metrics['perturbation_effects'] = pertmissmeio_effects
-        logger.info(f"Computed perturbation effects for {len(pertmissmeio_effects)} guides")
+        self.metrics['perturbation_effects'] = perturbation_effects
+        logger.info(f"Computed perturbation effects for {len(perturbation_effects)} guides")
 
     def generate_visualmissio(self):
         logger.info("Generating visualmissio...")
@@ -143,7 +143,7 @@ class ModelEvaluator:
         umap_y = self.adata_test.obsm['X_umap'][:, 1]
         
         top_20_guides = sorted(
-            self.metrics['pertmissmeio_effects'].items(),
+            self.metrics['perturbation_effects'].items(),
             key=lambda x: x[1],
             reverse=True
         )[:20]
@@ -241,7 +241,7 @@ class ModelEvaluator:
         plt.close(fig)
 
         logger.info("Generating pertmissmeio effect plot...")
-        pert_effects_df = pd.DataFrame.from_dict(self.metrics['pertmissmeio_effects'], orient='index',
+        pert_effects_df = pd.DataFrame.from_dict(self.metrics['perturbation_effects'], orient='index',
                                                  columns=['magnitude'])
         pert_effects_df = pert_effects_df.sort_values('magnitude', ascending=False).head(20)
 
@@ -263,9 +263,9 @@ class ModelEvaluator:
             f.write(f"Evaluation completed on: {pd.Timestamp.now().isoformat()}\n\n")
 
             f.write("## Metrics\n\n")
-            f.write(f"- **Reconstruction MSE:** {self.metrics['remissmeio_mse']:.4f}\n")
+            f.write(f"- **Reconstruction MSE:** {self.metrics['reconstruction_mse']:.4f}\n")
 
-            top_5_perts = sorted(self.metrics['pertmissmeio_effects'].items(), key=lambda x: x[1], reverse=True)[:5]
+            top_5_perts = sorted(self.metrics['perturbation_effects'].items(), key=lambda x: x[1], reverse=True)[:5]
             f.write("- **Top 5 Pertmissmeio Effects:**\n")
             for guide, mag in top_5_perts:
                 f.write(f"  - {guide}: {mag:.4f}\n")
@@ -288,7 +288,7 @@ class ModelEvaluator:
         self.load_model_and_data(model_path, data_path)
         self.compute_latent_embeddings()
         self.compute_reconstruction_metrics()
-        self.compute_pertmissmeio_metrics()
+        self.compute_perturbation_metrics()
         self.generate_visualmissio()
         self.generate_report()
         logger.info("Evaluation complete.")
