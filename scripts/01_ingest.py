@@ -125,7 +125,7 @@ class ReplogleDatasetDowloader:
             else:
                 logger.info("File size unknown, dowloading without progress bar...")
                 with open(file_path, 'wb') as f:
-                    for chunk in response.iter_content(chunk_size=81ati):
+                    for chunk in response.iter_content(chunk_size=8192):
                         if chunk:
                             f.write(chunk)
                             hash_sha256.update(chunk)
