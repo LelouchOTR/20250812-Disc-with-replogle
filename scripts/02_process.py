@@ -28,7 +28,7 @@ sys.path.insert(0, str(project_root))
 
 from src.utils.config import load_config
 from src.utils.random_seed import set_global_seed
-from src.utils.gene_ids import get_gene_mapper, standardio_gene_list
+from src.utils.gene_ids import get_gene_mapper, standardize_gene_list
 
 sc.settings.verbosity = 1
 sc.settings.set_figure_params(dpi=80, facecolor='white')
@@ -40,7 +40,7 @@ warnings.filterwarnings('ignore', category=UserWarning)
 
 
 class DataProcessingError(Exception):
-    """Custom exceptio for data processing errors."""
+    """Custom exception for data processing errors."""
     pass
 
 
@@ -94,7 +94,7 @@ class SingleCellDataProcessor:
 
             return adata
 
-        except Exceptio as e:
+        except Exception as e:
             raise DataProcessingError(f"Failed to load data from {data_path}: {e}")
 
     def apply_quality_control(self, adata: ad.AnnData) -> ad.AnnData:
@@ -313,9 +313,9 @@ class SingleCellDataProcessor:
                 adata.var['original_id'] = adata.var_names
                 return adata
 
-            id_mapping = dict(zip(validio_mappings['original_id'], validio_mappings['ensembl_id']))
+            id_mapping = dict(zip(valid_mappings['original_id'], valid_mappings['ensembl_id']))
 
-            genes_to_keep = validio_mappings['original_id'].tolist()
+            genes_to_keep = valid_mappings['original_id'].tolist()
             gene_filter = adata.var_names.isin(genes_to_keep)
 
             adata = adata[:, gene_filter].copy()
@@ -329,7 +329,7 @@ class SingleCellDataProcessor:
 
             logger.info("Gene ID mapping completed successfully")
 
-        except Exceptio as e:
+        except Exception as e:
             logger.error(f"Gene ID mapping failed: {e}")
             logger.warning("Proceeding with original gene IDs")
             adata.var['ensembl_id'] = adata.var_names
@@ -432,10 +432,10 @@ class SingleCellDataProcessor:
             'config_used': self.config
         }
 
-        metadata_path = self.output_dir / "processing_metadata.jso"
-        import jso
+        metadata_path = self.output_dir / "processing_metadata.json"
+        import json
         with open(metadata_path, 'w') as f:
-            jso.dump(metadata, f, indent=2, default=str)
+            json.dump(metadata, f, indent=2, default=str)
 
         logger.info(f"Saved processing metadata: {metadata_path}")
 
@@ -468,7 +468,7 @@ def main():
 
     try:
         config = load_config(args.config)
-    except Exceptio as e:
+    except Exception as e:
         logger.error(f"Failed to load configuration: {e}")
         return 1
 
@@ -501,7 +501,7 @@ def main():
         logger.info("Data processing completed successfully")
         return 0
 
-    except Exceptio as e:
+    except Exception as e:
         logger.error(f"Data processing failed: {e}")
         return 1
 
