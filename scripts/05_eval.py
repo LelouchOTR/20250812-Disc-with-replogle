@@ -139,54 +139,84 @@ class ModelEvaluator:
         logger.info("Generating visualizations...")
 
         # Generate improved UMAP visualizations
-        logger.info("Generating improved UMAP visualizations...")
+        logger.info("Generating enhanced UMAP visualizations...")
         sc.pp.neighbors(self.adata_test, use_rep='X_latent', n_neighbors=15)
         sc.tl.umap(self.adata_test)
 
-        # Top-to-bottom figure layout: 1 row, 2 columns
-        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
-
-        # Plot 1: Label-free UMAP for visibility
-        sc.pl.umap(
-            self.adata_test,
-            color='is_control',
-            ax=ax1,
-            show=False,
-            palette=['blue', 'red'],
-            legend_loc='upper right',
-            title='UMAP - Control (blue) vs Perturbed (red)'
-        )
-        ax1.set_xlabel("UMAP Dimension 1")
-        ax1.set_ylabel("UMAP Dimension 2")
-
-        # Plot 2: Top 20 perturbations legend (no data points)
+        # Get UMAP coordinates for all cells
+        umap_x = self.adata_test.obsm['X_umap'][:, 0]
+        umap_y = self.adata_test.obsm['X_umap'][:, 1]
+        
+        # Prepare perturbation effects data
         top_20_guides = sorted(
             self.metrics['perturbation_effects'].items(),
             key=lambda x: x[1],
             reverse=True
         )[:20]
+        guide_colors = {g[0]: plt.cm.viridis(i/len(top_20_guides)) 
+                        for i, g in enumerate(top_20_guides)}
+        
+        # Create canvas with subplots: UMAP + magnified chromatin impact panel
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(24, 9))
 
-        labels = [g[0] for g in top_20_guides]
-        magnitudes = [g[1] for g in top_20_guides]
+        # Plot 1: Full UMAP with color-coded perturbations
+        ax1.set_title("UMAP: Control vs Top Perturbations", fontsize=16)
+        ax1.set_xlabel("UMAP Dimension 1", fontsize=12)
+        ax1.set_ylabel("UMAP Dimension 2", fontsize=12)
 
-        # Create a colormap spectrum - light (weak) to dark (strong effects)
-        cmap = plt.cm.viridis(np.linspace(0.2, 0.8, len(labels)))
+        # Plot control cells in light gray
+        control_mask = self.adata_test.obs['is_control']
+        ax1.scatter(
+            umap_x[control_mask], 
+            umap_y[control_mask],
+            color='lightgray',
+            s=10,
+            alpha=0.2,
+            label='Control Cells'
+        )
 
-        # Create invisible scatter plot for legend entries
-        for i, label in enumerate(labels):
-            ax2.scatter([], [], color=cmap[i], label=f"{label}: {magnitudes[i]:.2f}")
+        # Highlight top perturbation cells with scaling by effect magnitude
+        for guide, magnitude in top_20_guides:
+            guide_mask = (self.adata_test.obs['guide_identity'] == guide)
+            size = 20 + 80 * (magnitude / max(m[1] for m in top_20_guides))  # Size proportional to effect
+            ax1.scatter(
+                umap_x[guide_mask],
+                umap_y[guide_mask],
+                color=guide_colors[guide],
+                s=size,
+                alpha=0.7,
+                label=f"{guide} ({magnitude:.2f})"
+            )
 
+        # Plot 2: Chromatin impact legend
+        ax2.set_title("Top 20 Gene Perturbations", fontsize=16)
+        handles = []
+        for guide, magnitude in top_20_guides:
+            size = 30 + 100 * (magnitude / max(m[1] for m in top_20_guides))
+            handles.append(ax2.scatter(
+                [], [], 
+                color=guide_colors[guide],
+                s=size,
+                alpha=0.7,
+                label=f"{guide}: {magnitude:.2f}"
+            ))
+        
+        # Create unified legend with point size indicating perturbation strength
         ax2.legend(
+            handles=handles,
             loc='center',
-            fontsize=9,
+            title="Perturbation Effects\n(Point Size ~ Effect Magnitude)",
+            fontsize=10,
+            title_fontsize=12,
             frameon=False,
-            title="Top 20 Perturbations\n(Effect Magnitude)",
-            markerscale=1.5
+            handletextpad=1.5  
         )
         ax2.axis('off')  # Hide axes
 
-        plt.tight_layout()
-        plt.savefig(self.plots_dir / "umap_improved.png", dpi=300, bbox_inches='tight')
+        # Add report title
+        fig.suptitle("Single-Cell CRISPR Screen Analysis", fontsize=20)
+        plt.tight_layout(rect=[0, 0, 1, 0.95])  # Make room for super title
+        plt.savefig(self.plots_dir / "umap_enhanced.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
 
         # Reconstruction quality plot
