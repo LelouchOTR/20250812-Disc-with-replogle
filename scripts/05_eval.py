@@ -177,6 +177,7 @@ class ModelEvaluator:
             edgecolors='none'
         )
 
+        # Plot top 20 perturbations with black outline
         for guide, magnitude in top_20_guides:
             guide_mask = (self.adata_test.obs['guide_identity'] == guide)
             size = guide_sizes[guide]
@@ -188,9 +189,11 @@ class ModelEvaluator:
                 alpha=0.9,
                 edgecolors='black',
                 linewidth=1.2,
-                marker='o'
+                marker='o',
+                label=f'Top perturbation: {guide}'
             )
 
+        # Create legend for point sizes
         size_values = [0.1, 0.5, 1.0]
         size_labels = ['Low Effect', 'Medium Effect', 'High Effect']
         legend_elements = [
@@ -198,6 +201,7 @@ class ModelEvaluator:
             for size_val in size_values
         ]
         
+        # Add legend for point sizes
         size_legend = ax.legend(
             handles=legend_elements,
             labels=size_labels,
@@ -207,13 +211,15 @@ class ModelEvaluator:
             title_fontsize=10
         )
         
-        main_legend = ax.legend(
+        # Add main legend
+        ax.legend(
             ['Control Cells', 'Perturbed Cells', 'Top Perturbations'],
-            ['Control (Dark Blue)', 'Perturbed (Light Red)', 'Top 20 (Red with Black Outline)'],
+            ['Control (Dark Blue)', 'Perturbed (Light Red)', 'Top 20 Perturbations (Red with Black Outline)'],
             loc='upper left',
             fontsize=9
         )
         
+        # Add the size legend back to the plot
         ax.add_artist(size_legend)
 
         ax.set_title("UMAP: Control vs Perturbed Cells\n(Point Size Indicates Perturbation Effect Strength)", fontsize=14)
@@ -261,6 +267,13 @@ class ModelEvaluator:
         with open(report_path, 'w') as f:
             f.write("# DiscrepancyVAE Evaluation Report\n\n")
             f.write(f"Evaluation completed on: {pd.Timestamp.now().isoformat()}\n\n")
+            
+            f.write("## Visualization Explanation\n\n")
+            f.write("The UMAP plot shows the latent space representation of cells:\n")
+            f.write("- **Dark blue dots**: Control cells (unperturbed)\n")
+            f.write("- **Light red dots**: Perturbed cells (with gene perturbations)\n")
+            f.write("- **Red dots with black outline**: Top 20 perturbations with strongest effects\n")
+            f.write("  (Point size indicates perturbation effect strength - larger points represent stronger effects)\n\n")
 
             f.write("## Metrics\n\n")
             f.write(f"- **Reconstruction MSE:** {self.metrics['reconstruction_mse']:.4f}\n")
@@ -270,7 +283,7 @@ class ModelEvaluator:
             for guide, mag in top_5_perts:
                 f.write(f"  - {guide}: {mag:.4f}\n")
 
-            f.write("\n## Visualization\n\n")
+            f.write("\n## Plots\n\n")
 
             f.write("### UMAP of Latent Space\n\n")
             f.write("![UMAP](plots/umap_enhanced.png)\n\n")
