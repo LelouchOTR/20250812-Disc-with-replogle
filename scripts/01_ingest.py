@@ -489,6 +489,8 @@ def main():
     parser.add_argument("--config", type=str, help="Path to configuration file")
     parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/raw",
                         help="Output directory for raw data")
+    parser.add_argument("--log-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/logs",
+                        help="Log directory")
     parser.add_argument("--sources", nargs="+", default=["figshare_direct"],
                         help="Data sources to download from (use 'figshare_direct' for the provided URL)")
     parser.add_argument("--validate", action="store_true", help="Validate downloaded files")
@@ -498,6 +500,19 @@ def main():
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
 
     args = parser.parse_args()
+    
+    # Setup logging to file
+    log_dir = Path(args.log_dir) 
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / '01_ingest.log'
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(log_file)
+        ]
+    )
 
     # Set random seed
     set_global_seed(args.seed)
