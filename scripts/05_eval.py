@@ -54,107 +54,108 @@ class ModelEvaluator:
     """
     Evaluator class for the DiscrepancyVAE model.
     """
+
     def __init__(self, config: dict, output_dir: Path, device: torch.device):
         self.config = config
         self.output_dir = Path(output_dir)
         self.device = device
         self.plots_dir = self.output_dir / "plots"
         self.plots_dir.mkdir(parents=True, exist_ok=True)
-        
+
         self.model = None
         self.adata_test = None
         self.latent_embeddings = None
         self.metrics = {}
-        
+
         logger.info(f"Initialized ModelEvaluator with output dir: {self.output_dir}")
 
     def load_model_and_data(self, model_path: Path, data_path: Path):
         logger.info(f"Loading model from {model_path}")
         if not model_path.exists():
             raise EvaluationError(f"Model file not found: {model_path}")
-            
+
         self.model, _ = DiscrepancyVAE.load_checkpoint(model_path, device=self.device)
         self.model.eval()
-        
+
         logger.info(f"Loading test data from {data_path}")
         if not data_path.exists():
             raise EvaluationError(f"Test data file not found: {data_path}")
-        
+
         self.adata_test = ad.read_h5ad(data_path)
         logger.info(f"Loaded test data: {self.adata_test.shape}")
         self.X_data_type = type(self.adata_test.X)  # Store array type
 
     def compute_latent_embeddings(self):
         logger.info("Computing latent embeddings...")
-        
+
         # Handle both sparse and dense formats
         if sparse.issparse(self.adata_test.X):
             X_test = torch.from_numpy(self.adata_test.X.toarray())
         else:
             X_test = torch.from_numpy(self.adata_test.X)
         X_test = X_test.float().to(self.device)
-        
+
         with torch.no_grad():
             self.latent_embeddings = self.model.get_latent_representation(X_test).cpu().numpy()
-            
+
         self.adata_test.obsm['X_latent'] = self.latent_embeddings
         logger.info(f"Computed latent embeddings: {self.latent_embeddings.shape}")
 
     def compute_reconstruction_metrics(self):
         logger.info("Computing reconstruction metrics...")
-        
+
         if sparse.issparse(self.adata_test.X):
             X_true = self.adata_test.X.toarray()
         else:
             X_true = self.adata_test.X
-            
+
         X_test = torch.from_numpy(X_true).float().to(self.device)
-        
+
         with torch.no_grad():
             model_output = self.model(X_test)
             X_recon = model_output['x_recon'].cpu().numpy()
-            
+
         mse = mean_squared_error(X_true, X_recon)
         self.metrics['reconstruction_mse'] = mse
         logger.info(f"Reconstruction MSE: {mse:.4f}")
 
     def compute_perturbation_metrics(self):
         logger.info("Computing perturbation metrics...")
-        
+
         control_mask = self.adata_test.obs['is_control']
         control_latent = self.latent_embeddings[control_mask]
         mean_control_latent = np.mean(control_latent, axis=0)
-        
+
         perturbation_effects = {}
         for guide in self.adata_test.obs['guide_identity'].unique():
             if guide in self.adata_test.obs[self.adata_test.obs['is_control']]['guide_identity'].unique():
-                continue # Skip control guides
-            
+                continue  # Skip control guides
+
             pert_mask = self.adata_test.obs['guide_identity'] == guide
             pert_latent = self.latent_embeddings[pert_mask]
             mean_pert_latent = np.mean(pert_latent, axis=0)
-            
+
             effect_vector = mean_pert_latent - mean_control_latent
             effect_magnitude = np.linalg.norm(effect_vector)
             perturbation_effects[guide] = effect_magnitude
-            
+
         self.metrics['perturbation_effects'] = perturbation_effects
         logger.info(f"Computed perturbation effects for {len(perturbation_effects)} guides")
 
     def generate_visualizations(self):
         logger.info("Generating visualizations...")
-        
+
         # UMAP of latent space
         logger.info("Generating UMAP plot...")
         sc.pp.neighbors(self.adata_test, use_rep='X_latent', n_neighbors=15)
         sc.tl.umap(self.adata_test)
-        
+
         fig, ax = plt.subplots(figsize=(10, 8))
         sc.pl.umap(self.adata_test, color='guide_identity', ax=ax, show=False, legend_loc='on data')
         plt.title("UMAP of Latent Space")
         plt.savefig(self.plots_dir / "umap_latent_space.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
-        
+
         # Reconstruction quality plot
         logger.info("Generating reconstruction quality plot...")
         if sparse.issparse(self.adata_test.X):
@@ -163,7 +164,7 @@ class ModelEvaluator:
             X_test = self.adata_test.X
         with torch.no_grad():
             X_recon = self.model(torch.from_numpy(X_test).float().to(self.device))['x_recon'].cpu().numpy()
-            
+
         fig, ax = plt.subplots(figsize=(8, 8))
         ax.scatter(X_test.flatten(), X_recon.flatten(), alpha=0.1, s=1)
         ax.set_xlabel("Original Expression")
@@ -171,12 +172,13 @@ class ModelEvaluator:
         ax.set_title("Reconstruction Quality")
         plt.savefig(self.plots_dir / "reconstruction_quality.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
-        
+
         # Perturbation effect plot
         logger.info("Generating perturbation effect plot...")
-        pert_effects_df = pd.DataFrame.from_dict(self.metrics['perturbation_effects'], orient='index', columns=['magnitude'])
+        pert_effects_df = pd.DataFrame.from_dict(self.metrics['perturbation_effects'], orient='index',
+                                                 columns=['magnitude'])
         pert_effects_df = pert_effects_df.sort_values('magnitude', ascending=False).head(20)
-        
+
         fig, ax = plt.subplots(figsize=(12, 8))
         sns.barplot(x=pert_effects_df.index, y=pert_effects_df['magnitude'], ax=ax)
         ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
@@ -187,32 +189,32 @@ class ModelEvaluator:
 
     def generate_report(self):
         logger.info("Generating evaluation report...")
-        
+
         report_path = self.output_dir / "evaluation_report.md"
-        
+
         with open(report_path, 'w') as f:
             f.write("# DiscrepancyVAE Evaluation Report\n\n")
             f.write(f"Evaluation completed on: {pd.Timestamp.now().isoformat()}\n\n")
-            
+
             f.write("## Metrics\n\n")
             f.write(f"- **Reconstruction MSE:** {self.metrics['reconstruction_mse']:.4f}\n")
-            
+
             top_5_perts = sorted(self.metrics['perturbation_effects'].items(), key=lambda x: x[1], reverse=True)[:5]
             f.write("- **Top 5 Perturbation Effects:**\n")
             for guide, mag in top_5_perts:
                 f.write(f"  - {guide}: {mag:.4f}\n")
-            
+
             f.write("\n## Visualizations\n\n")
-            
+
             f.write("### UMAP of Latent Space\n\n")
             f.write("![UMAP](plots/umap_latent_space.png)\n\n")
-            
+
             f.write("### Reconstruction Quality\n\n")
             f.write("![Reconstruction Quality](plots/reconstruction_quality.png)\n\n")
-            
+
             f.write("### Perturbation Effects\n\n")
             f.write("![Perturbation Effects](plots/perturbation_effects.png)\n\n")
-            
+
         logger.info(f"Saved evaluation report to {report_path}")
 
     def evaluate(self, model_path: Path, data_path: Path):
@@ -230,27 +232,28 @@ def main():
     """Main function for model evaluation pipeline."""
     parser = argparse.ArgumentParser(description="Evaluate DiscrepancyVAE model")
     parser.add_argument("--config", type=str, default="pipeline_config", help="Configuration file name")
-    parser.add_argument("--model-path", type=str, 
-                       default="/data/gidb/shared/results/tmp/replogle/models/best_model.pth",
-                       help="Path to the trained model checkpoint")
+    parser.add_argument("--model-path", type=str,
+                        default="/data/gidb/shared/results/tmp/replogle/models/best_model.pth",
+                        help="Path to the trained model checkpoint")
     parser.add_argument("--data-path", type=str, required=True, help="Path to the test data file (h5ad)")
-    parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/evaluation", help="Output directory")
+    parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/evaluation",
+                        help="Output directory")
     parser.add_argument("--device", type=str, help="Device to use (cuda/cpu)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
-    
+
     args = parser.parse_args()
-    
+
     set_global_seed(args.seed)
-    
+
     if args.device:
         device = torch.device(args.device)
     else:
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
+
     logger.info(f"Using device: {device}")
-    
+
     config = load_config(args.config)
-    
+
     evaluator = ModelEvaluator(config, Path(args.output_dir), device)
     evaluator.evaluate(Path(args.model_path), Path(args.data_path))
 
