@@ -178,20 +178,30 @@ class ModelEvaluator:
         )
 
         # Plot top 20 perturbations with black outline
+        # We'll collect all the points first and then plot them together
+        top_pert_x = []
+        top_pert_y = []
+        top_pert_sizes = []
+        
         for guide, magnitude in top_20_guides:
             guide_mask = (self.adata_test.obs['guide_identity'] == guide)
+            top_pert_x.extend(umap_x[guide_mask])
+            top_pert_y.extend(umap_y[guide_mask])
             size = guide_sizes[guide]
-            ax.scatter(
-                umap_x[guide_mask],
-                umap_y[guide_mask],
-                color='red',
-                s=size,
-                alpha=0.9,
-                edgecolors='black',
-                linewidth=1.2,
-                marker='o',
-                label=f'Top perturbation: {guide}'
-            )
+            top_pert_sizes.extend([size] * np.sum(guide_mask))
+        
+        # Plot all top perturbations as one scatter plot for cleaner legend
+        ax.scatter(
+            top_pert_x,
+            top_pert_y,
+            color='red',
+            s=top_pert_sizes,
+            alpha=0.9,
+            edgecolors='black',
+            linewidth=1.2,
+            marker='o',
+            label='Top 20 Perturbations'
+        )
 
         # Create legend for point sizes
         size_values = [0.1, 0.5, 1.0]
@@ -213,8 +223,6 @@ class ModelEvaluator:
         
         # Add main legend
         ax.legend(
-            ['Control Cells', 'Perturbed Cells', 'Top Perturbations'],
-            ['Control (Dark Blue)', 'Perturbed (Light Red)', 'Top 20 Perturbations (Red with Black Outline)'],
             loc='upper left',
             fontsize=9
         )
