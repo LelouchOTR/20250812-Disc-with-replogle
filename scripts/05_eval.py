@@ -145,15 +145,55 @@ class ModelEvaluator:
     def generate_visualizations(self):
         logger.info("Generating visualizations...")
 
-        # UMAP of latent space
-        logger.info("Generating UMAP plot...")
+        # Generate improved UMAP visualizations
+        logger.info("Generating improved UMAP visualizations...")
         sc.pp.neighbors(self.adata_test, use_rep='X_latent', n_neighbors=15)
         sc.tl.umap(self.adata_test)
 
-        fig, ax = plt.subplots(figsize=(10, 8))
-        sc.pl.umap(self.adata_test, color='guide_identity', ax=ax, show=False, legend_loc='on data')
-        plt.title("UMAP of Latent Space")
-        plt.savefig(self.plots_dir / "umap_latent_space.png", dpi=300, bbox_inches='tight')
+        # Top-to-bottom figure layout: 1 row, 2 columns
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 8))
+
+        # Plot 1: Label-free UMAP for visibility
+        sc.pl.umap(
+            self.adata_test,
+            color='is_control',
+            ax=ax1,
+            show=False,
+            palette=['blue', 'red'],
+            legend_loc='upper right',
+            title='UMAP - Control (blue) vs Perturbed (red)'
+        )
+        ax1.set_xlabel("UMAP Dimension 1")
+        ax1.set_ylabel("UMAP Dimension 2")
+
+        # Plot 2: Top 20 perturbations legend (no data points)
+        top_20_guides = sorted(
+            self.metrics['perturbation_effects'].items(),
+            key=lambda x: x[1],
+            reverse=True
+        )[:20]
+
+        labels = [g[0] for g in top_20_guides]
+        magnitudes = [g[1] for g in top_20_guides]
+
+        # Create a colormap spectrum - light (weak) to dark (strong effects)
+        cmap = plt.cm.viridis(np.linspace(0.2, 0.8, len(labels)))
+
+        # Create invisible scatter plot for legend entries
+        for i, label in enumerate(labels):
+            ax2.scatter([], [], color=cmap[i], label=f"{label}: {magnitudes[i]:.2f}")
+
+        ax2.legend(
+            loc='center',
+            fontsize=9,
+            frameon=False,
+            title="Top 20 Perturbations\n(Effect Magnitude)",
+            markerscale=1.5
+        )
+        ax2.axis('off')  # Hide axes
+
+        plt.tight_layout()
+        plt.savefig(self.plots_dir / "umap_improved.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
 
         # Reconstruction quality plot
