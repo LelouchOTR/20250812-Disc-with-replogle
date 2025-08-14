@@ -3,7 +3,7 @@
 Data ingestion pipeline for Replogle 2022 K562 essential Perturb-seq dataset.
 
 This script downloads the Replogle et al. 2022 K562 essential gene Perturb-seq dataset,
-implements SHA256 checksum verification for data integrity, saves dataset metadata,
+implements SHA256 checksumatio verification for data integrity, saves dataset metadata,
 and stores raw data in the data/raw/ directory.
 
 Reference:
@@ -25,57 +25,44 @@ from urllib.parse import urlparse
 import requests
 from tqdm import tqdm
 
-# Add project root to path for imports
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
 from src.utils.config import load_config
 from src.utils.random_seed import set_global_seed
 
-# Command-line arguments will configure logging properly
 logger = logging.getLogger(__name__)
 
 
-class DataIngestionError(Exception):
-    """Custom exception for data ingestion errors."""
+class DataIngestioError(Exception):
+    """Custom exceptio for data ingestio errors."""
     pass
 
 
-class ReplogleDatasetDownloader:
+class ReplogleDatasetDowloader:
     """
-    Downloader for the Replogle 2022 K562 essential Perturb-seq dataset.
+    Dowloader for the Replogle 2022 K562 essetial Perturb-seq dataset.
     
     The dataset is available from Figshare repository.
     """
 
-    # Dataset URLs and checksums - Direct Figshare file for TianKampmann 2021 CRISPRi dataset
     DATASET_SOURCES = {
-        # Single direct Figshare downloader link (TianKampmann2021_CRISPRi.h5ad)
         "figshare_direct": {
-            "url": "https://plus.figshare.com/ndownloader/files/42444315",
-            "description": "TianKampmann2021_CRISPRi.h5ad direct Figshare download",
+            "url": "https://plus.figshare.com/ndowloader/files/42444315",
+            "descriptio": "TianKampmann2021_CRISPRi.h5ad direct Figshare dowload",
             "expected_size": None,
             "sha256": None
         }
     }
 
     def __init__(self, output_dir: Path, config: Optional[Dict] = None, skip_integrity_checks: bool = False):
-        """
-        Initialize the dataset downloader.
-        
-        Args:
-            output_dir: Directory to save downloaded files
-            config: Configuration dictionary (optional)
-            skip_integrity_checks: Whether to skip file integrity verification
-        """
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.config = config or {}
         self.skip_integrity_checks = skip_integrity_checks
-        self.session = requests.Session()
+        self.sessio = requests.Sessio()
 
-        # Set up session with retry strategy
         from requests.adapters import HTTPAdapter
         from urllib3.util.retry import Retry
 
@@ -85,28 +72,16 @@ class ReplogleDatasetDownloader:
             status_forcelist=[429, 500, 502, 503, 504],
         )
         adapter = HTTPAdapter(max_retries=retry_strategy)
-        self.session.mount("http://", adapter)
-        self.session.mount("https://", adapter)
+        self.sessio.mount("http://", adapter)
+        self.sessio.mount("https://", adapter)
 
-        logger.info(f"Initialized ReplogleDatasetDownloader with output dir: {self.output_dir}")
+        logger.info(f"Initialized ReplogleDatasetDowloader with output dir: {self.output_dir}")
         if self.skip_integrity_checks:
             logger.info("Integrity checks are SKIPPED for faster debugging")
 
-    def download_file(self, url: str, filename: str, expected_size: Optional[int] = None) -> Tuple[Path, str, int]:
-        """
-        Download a file with progress bar and return path, SHA256 hash, and size.
-        
-        Args:
-            url: URL to download from
-            filename: Local filename to save as
-            expected_size: Expected file size for validation (optional)
-            
-        Returns:
-            Tuple of (file_path, sha256_hash, file_size)
-        """
+    def dowload_file(self, url: str, filename: str, expected_size: Optional[int] = None) -> Tuple[Path, str, int]:
         file_path = self.output_dir / filename
 
-        # Check if file already exists
         if file_path.exists():
             logger.info(f"File {filename} already exists, checking integrity...")
             existing_hash, existing_size = self._compute_file_hash_and_size(file_path)
@@ -119,27 +94,24 @@ class ReplogleDatasetDownloader:
                 logger.info(f"Using existing file: {filename}")
                 return file_path, existing_hash, existing_size
             else:
-                logger.warning(f"Existing file size mismatch, re-downloading: {filename}")
+                logger.warning(f"Existing file size mismatch, re-dowloading: {filename}")
 
-        logger.info(f"Downloading {filename} from {url}")
+        logger.info(f"Dowloading {filename} from {url}")
 
         try:
-            # Get file size for progress bar
-            response = self.session.head(url, timeout=30)
+            response = self.sessio.head(url, timeout=30)
             response.raise_for_status()
 
             total_size = int(response.headers.get('content-length', 0))
             if expected_size and total_size != expected_size:
                 logger.warning(f"Server reported size {total_size} differs from expected {expected_size}")
 
-            # Download with progress bar
-            response = self.session.get(url, stream=True, timeout=600)  # Increased timeout
+            response = self.sessio.get(url, stream=True, timeout=600)
             response.raise_for_status()
 
             hash_sha256 = hashlib.sha256()
-            downloaded_size = 0
+            dowloaded_size = 0
 
-            # If we don't have total_size, don't show progress bar
             if total_size > 0:
                 with open(file_path, 'wb') as f:
                     with tqdm(total=total_size, unit='B', unit_scale=True, desc=filename) as pbar:
@@ -148,43 +120,32 @@ class ReplogleDatasetDownloader:
                                 f.write(chunk)
                                 hash_sha256.update(chunk)
                                 chunk_size = len(chunk)
-                                downloaded_size += chunk_size
+                                dowloaded_size += chunk_size
                                 pbar.update(chunk_size)
             else:
-                # Download without progress bar if size is unknown
-                logger.info("File size unknown, downloading without progress bar...")
+                logger.info("File size unknown, dowloading without progress bar...")
                 with open(file_path, 'wb') as f:
-                    for chunk in response.iter_content(chunk_size=8192):
+                    for chunk in response.iter_content(chunk_size=81ati):
                         if chunk:
                             f.write(chunk)
                             hash_sha256.update(chunk)
-                            downloaded_size += len(chunk)
+                            dowloaded_size += len(chunk)
 
             sha256_hash = hash_sha256.hexdigest()
 
-            logger.info(f"Successfully downloaded {filename} ({downloaded_size} bytes)")
+            logger.info(f"Successfully dowloaded {filename} ({dowloaded_size} bytes)")
             logger.info(f"SHA256: {sha256_hash}")
 
-            return file_path, sha256_hash, downloaded_size
+            return file_path, sha256_hash, dowloaded_size
 
-        except requests.RequestException as e:
-            raise DataIngestionError(f"Failed to download {url}: {e}")
-        except Exception as e:
-            # Clean up partial download
+        except requests.RequestExceptio as e:
+            raise DataIngestioError(f"Failed to dowload {url}: {e}")
+        except Exceptio as e:
             if file_path.exists():
                 file_path.unlink()
-            raise DataIngestionError(f"Error downloading {filename}: {e}")
+            raise DataIngestioError(f"Error dowloading {filename}: {e}")
 
     def _compute_file_hash_and_size(self, file_path: Path) -> Tuple[str, int]:
-        """
-        Compute SHA256 hash and size of an existing file.
-        
-        Args:
-            file_path: Path to the file
-            
-        Returns:
-            Tuple of (sha256_hash, file_size)
-        """
         hash_sha256 = hashlib.sha256()
         file_size = 0
 
@@ -196,16 +157,6 @@ class ReplogleDatasetDownloader:
         return hash_sha256.hexdigest(), file_size
 
     def verify_checksum(self, file_path: Path, expected_hash: str) -> bool:
-        """
-        Verify file integrity using SHA256 checksum.
-        
-        Args:
-            file_path: Path to the file to verify
-            expected_hash: Expected SHA256 hash
-            
-        Returns:
-            True if checksum matches, False otherwise
-        """
         if self.skip_integrity_checks:
             logger.info(f"Skipping integrity check for {file_path.name}")
             return True
@@ -225,44 +176,33 @@ class ReplogleDatasetDownloader:
             logger.error(f"Actual:   {actual_hash}")
             return False
 
-    def download_figshare_k562(self) -> List[Dict]:
-        """
-        Download K562 essential files from Figshare using the provided script logic.
-        
-        Returns:
-            List of download results for K562 files
-        """
-        logger.info("Downloading K562 essential files from Figshare...")
+    def dowload_figshare_k562(self) -> List[Dict]:
+        logger.info("Dowloading K562 essetial files from Figshare...")
 
-        # Figshare API item endpoint
         API_ITEM_URL = "https://api.figshare.com/v2/articles/20029387"
 
         try:
-            # 1) Get item metadata (lists files with their download URLs)
             meta = requests.get(API_ITEM_URL, timeout=60)
             meta.raise_for_status()
-            item = meta.json()
+            item = meta.jso()
 
-            # 2) Inspect files and filter for K562_essential .h5ad
             files = item.get("files", [])
             target_files = []
             for f in files:
                 name = f.get("name", "")
-                # Skip bulk data files - retain only single-cell data
-                if "K562_essential" in name and name.endswith(".h5ad") and "bulk" not in name:
+                if "K562_essetial" in name and name.endswith(".h5ad") and "bulk" not in name:
                     target_files.append({
                         "name": name,
-                        "download_url": f.get("download_url")
+                        "dowload_url": f.get("dowload_url")
                     })
 
-            logger.info(f"Found {len(target_files)} K562 essential files on Figshare")
+            logger.info(f"Found {len(target_files)} K562 essetial files on Figshare")
             for f in target_files:
                 logger.info(f"- {f['name']}")
 
-            # 3) Download selected files (streaming)
             results = []
             for f in target_files:
-                url = f["download_url"]
+                url = f["dowload_url"]
                 if not url:
                     logger.warning(f"Skipping (no direct URL): {f['name']}")
                     continue
@@ -270,7 +210,6 @@ class ReplogleDatasetDownloader:
                 filename = f["name"]
                 file_path = self.output_dir / filename
 
-                # Check if file already exists
                 if file_path.exists():
                     logger.info(f"File {filename} already exists, checking integrity...")
                     existing_hash, existing_size = self._compute_file_hash_and_size(file_path)
@@ -296,16 +235,14 @@ class ReplogleDatasetDownloader:
                     })
                     continue
 
-                logger.info(f"Downloading {filename} ...")
+                logger.info(f"Dowloading {filename} ...")
 
-                # Get file size for progress bar
                 head_response = requests.head(url, timeout=30)
                 head_response.raise_for_status()
                 total_size = int(head_response.headers.get('content-length', 0))
 
-                # Download with progress bar
                 hash_sha256 = hashlib.sha256()
-                downloaded_size = 0
+                dowloaded_size = 0
 
                 with requests.get(url, stream=True, timeout=600) as r:
                     r.raise_for_status()
@@ -317,54 +254,43 @@ class ReplogleDatasetDownloader:
                                         fh.write(chunk)
                                         hash_sha256.update(chunk)
                                         chunk_size = len(chunk)
-                                        downloaded_size += chunk_size
+                                        dowloaded_size += chunk_size
                                         pbar.update(chunk_size)
                         else:
-                            # Download without progress bar if size is unknown
-                            logger.info(f"File size unknown for {filename}, downloading without progress bar...")
+                            logger.info(f"File size unknown for {filename}, dowloading without progress bar...")
                             for chunk in r.iter_content(chunk_size=8192):
                                 if chunk:
                                     fh.write(chunk)
                                     hash_sha256.update(chunk)
-                                    downloaded_size += len(chunk)
+                                    dowloaded_size += len(chunk)
 
-                # Compute hash and size
                 sha256_hash = hash_sha256.hexdigest()
 
                 logger.info(f"Saved to {file_path}")
                 logger.info(f"SHA256: {sha256_hash}")
-                logger.info(f"Size: {downloaded_size} bytes")
+                logger.info(f"Size: {dowloaded_size} bytes")
 
                 results.append({
                     "name": filename,
-                    "file_path": str(file_path),  # Convert to string for JSON serialization
+                    "file_path": str(file_path),
                     "sha256": sha256_hash,
-                    "size": downloaded_size,
+                    "size": dowloaded_size,
                     "success": True
                 })
 
             return results
 
-        except Exception as e:
-            raise DataIngestionError(f"Failed to download from Figshare: {e}")
+        except Exceptio as e:
+            raise DataIngestioError(f"Failed to dowload from Figshare: {e}")
 
-    def download_dataset(self, source_priority: List[str] = None) -> Dict[str, Dict]:
-        """
-        Download the complete Replogle dataset.
-        
-        Args:
-            source_priority: List of source keys to try in order
-            
-        Returns:
-            Dictionary with download results and metadata
-        """
+    def dowload_dataset(self, source_priority: List[str] = None) -> Dict[str, Dict]:
         if source_priority is None:
             source_priority = ["figshare_direct"]
 
-        download_results = {}
-        download_metadata = {
-            "download_date": datetime.now().isoformat(),
-            "dataset_name": "Replogle 2022 K562 essential Perturb-seq",
+        dowload_results = {}
+        dowload_metadata = {
+            "dowload_date": datetime.now().isoformat(),
+            "dataset_name": "Replogle 2022 K562 essetial Perturb-seq",
             "sources": {},
             "files": {},
             "total_size": 0,
@@ -381,17 +307,13 @@ class ReplogleDatasetDownloader:
             url = source_info["url"]
 
             try:
-                # Only direct file download is supported in this simplified ingestion flow.
-                # Download the provided Figshare file URL and record metadata.
                 if source_key == "figshare_direct":
-                    # Derive filename from URL path
-                    filename = Path(urlparse(url).path).name or "downloaded_file"
-                    logger.info(f"Downloading direct file {filename} from {url}")
+                    filename = Path(urlparse(url).path).name or "dowloaded_file"
+                    logger.info(f"Dowloading direct file {filename} from {url}")
 
-                    # Ensure filename ends with .h5ad
                     if not filename.endswith('.h5ad'):
                         filename += '.h5ad'
-                    file_path, sha256_hash, file_size = self.download_file(url, filename)
+                    file_path, sha256_hash, file_size = self.dowload_file(url, filename)
 
                     result = {
                         "name": filename,
@@ -402,79 +324,69 @@ class ReplogleDatasetDownloader:
                     }
 
                     file_key = f"figshare_direct_{filename}"
-                    download_results[file_key] = result
+                    dowload_results[file_key] = result
 
-                    download_metadata["sources"][file_key] = {
+                    dowload_metadata["sources"][file_key] = {
                         "url": str(file_path),
-                        "description": source_info.get("description", f"Direct download: {filename}"),
+                        "descriptio": source_info.get("descriptio", f"Direct dowload: {filename}"),
                         "filename": filename,
                         "sha256": sha256_hash,
                         "size": file_size,
-                        "download_success": True
+                        "dowload_success": True
                     }
 
-                    download_metadata["files"][filename] = {
+                    dowload_metadata["files"][filename] = {
                         "source": file_key,
                         "path": str(file_path),
                         "sha256": sha256_hash,
                         "size": file_size
                     }
 
-                    download_metadata["total_size"] += file_size
+                    dowload_metadata["total_size"] += file_size
 
                     logger.info(f"Successfully processed source: {source_key}")
 
-            except DataIngestionError as e:
-                logger.error(f"Failed to download from source {source_key}: {e}")
+            except DataIngestioError as e:
+                logger.error(f"Failed to dowload from source {source_key}: {e}")
 
-                download_results[source_key] = {
+                dowload_results[source_key] = {
                     "success": False,
                     "error": str(e)
                 }
 
-                download_metadata["sources"][source_key] = {
+                dowload_metadata["sources"][source_key] = {
                     "url": url,
-                    "description": source_info["description"],
-                    "download_success": False,
+                    "descriptio": source_info["descriptio"],
+                    "dowload_success": False,
                     "error": str(e)
                 }
 
-                download_metadata["errors"].append(f"{source_key}: {e}")
-                download_metadata["success"] = False
+                dowload_metadata["errors"].append(f"{source_key}: {e}")
+                dowload_metadata["success"] = False
 
-        # Save metadata
-        metadata_file = self.output_dir / "download_metadata.json"
+        metadata_file = self.output_dir / "dowload_metadata.jso"
         with open(metadata_file, 'w') as f:
-            json.dump(download_metadata, f, indent=2)
+            jso.dump(dowload_metadata, f, indent=2)
 
-        logger.info(f"Download metadata saved to: {metadata_file}")
-        logger.info(f"Total downloaded size: {download_metadata['total_size']} bytes")
+        logger.info(f"Dowload metadata saved to: {metadata_file}")
+        logger.info(f"Total dowloaded size: {dowload_metadata['total_size']} bytes")
 
-        return download_results
+        return dowload_results
 
-    def validate_dataset(self, download_results: Dict[str, Dict]) -> bool:
-        """
-        Validate the downloaded dataset files.
-        
-        Args:
-            download_results: Results from download_dataset()
-            
-        Returns:
-            True if all files are valid, False otherwise
-        """
+    def validate_dataset(self, dowload_results: Dict[str, Dict]) -> bool:
         if self.skip_integrity_checks:
             logger.info("Skipping dataset validation for faster debugging")
             return True
 
         all_valid = True
 
-        for source_key, result in download_results.items():
+        for source_key, result in dowload_results.items():
             if not result.get("success", False):
-                logger.error(f"Source {source_key} was not successfully downloaded")
+                logger.error(f"Source {source_key} was not successfully dowloaded")
                 all_valid = False
                 continue
 
-            file_path = Path(result["file_path"])  # Convert back to Path for operations
+            file_path = Path(result["file_path"])
             expected_hash = result["sha256"]
 
             if not self.verify_checksum(file_path, expected_hash):
@@ -484,24 +396,22 @@ class ReplogleDatasetDownloader:
 
 
 def main():
-    """Main function for data ingestion pipeline."""
-    parser = argparse.ArgumentParser(description="Download single-file dataset (TianKampmann 2021 CRISPRi h5ad)")
-    parser.add_argument("--config", type=str, help="Path to configuration file")
+    parser = argparse.ArgumentParser(description="Dowload single-file dataset (TianKampmann 2021 CRISPRi h5ad)")
+    parser.add_argument("--config", type=str, help="Path to configurme file")
     parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/raw",
                         help="Output directory for raw data")
     parser.add_argument("--log-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/logs",
                         help="Log directory")
     parser.add_argument("--sources", nargs="+", default=["figshare_direct"],
-                        help="Data sources to download from (use 'figshare_direct' for the provided URL)")
-    parser.add_argument("--validate", action="store_true", help="Validate downloaded files")
-    parser.add_argument("--force-redownload", action="store_true", help="Force re-download even if files exist")
+                        help="Data sources to dowload from (use 'figshare_direct' for the provided URL)")
+    parser.add_argument("--validate", action="store_true", help="Validate dowloaded files")
+    parser.add_argument("--force-redowload", action="store_true", help="Force re-dowload even if files exist")
     parser.add_argument("--skip-integrity-checks", action="store_true",
                         help="Skip file integrity verification for faster debugging")
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
 
     args = parser.parse_args()
     
-    # Setup logging to file
     log_dir = Path(args.log_dir) 
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / '01_ingest.log'
@@ -514,67 +424,59 @@ def main():
         ]
     )
 
-    # Set random seed
     set_global_seed(args.seed)
 
-    # Load configuration
     config = {}
     if args.config:
         try:
             config = load_config(args.config)
-        except Exception as e:
+        except Exceptio as e:
             logger.warning(f"Could not load config file {args.config}: {e}")
 
-    # Create output directory
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    logger.info("Starting Replogle 2022 K562 essential Perturb-seq dataset ingestion")
+    logger.info("Starting Replogle 2022 K562 essetial Perturb-seq dataset ingestio")
     logger.info(f"Output directory: {output_dir}")
-    logger.info(f"Sources to download: {args.sources}")
+    logger.info(f"Sources to dowload: {args.sources}")
 
     try:
-        # Initialize downloader
-        downloader = ReplogleDatasetDownloader(output_dir, config, args.skip_integrity_checks)
+        dowloader = ReplogleDatasetDowloader(output_dir, config, args.skip_integrity_checks)
 
-        # Remove existing files if force download
-        if args.force_redownload:
-            logger.info("Force redownload enabled, removing existing files...")
+        if args.force_redowload:
+            logger.info("Force redowload enabled, removing existing files...")
             for file_path in output_dir.glob("*"):
                 if file_path.is_file():
                     file_path.unlink()
                     logger.info(f"Removed existing file: {file_path}")
 
-        # Download dataset
-        download_results = downloader.download_dataset(args.sources)
+        dowload_results = dowloader.dowload_dataset(args.sources)
 
-        # Validate if requested
         if args.validate:
-            logger.info("Validating downloaded files...")
-            if downloader.validate_dataset(download_results):
+            logger.info("Validating dowloaded files...")
+            if dowloader.validate_dataset(dowload_results):
                 logger.info("All files validated successfully")
             else:
                 logger.error("File validation failed")
                 return 1
 
-        # Summary
-        successful_downloads = sum(1 for result in download_results.values() if result.get("success", False))
-        total_downloads = len(download_results)
+        successful_dowloads = sum(1 for result in dowload_results.values() if result.get("success", False))
+        total_dowloads = len(dowload_results)
 
-        logger.info(f"Data ingestion completed: {successful_downloads}/{total_downloads} sources successful")
+        logger.info(f"Data ingestio completed: {successful_dowloads}/{total_dowloads} sources successful")
 
-        if successful_downloads == 0:
-            logger.error("No files were successfully downloaded")
+        if successful_dowloads == 0:
+            logger.error("No files were successfully dowloaded")
             return 1
-        elif successful_downloads < total_downloads:
-            logger.warning("Some downloads failed, but at least one succeeded")
+        elif successful_dowloads < total_dowloads:
+            logger.warning("Some dowloads failed, but at least one succeeded")
             return 0
         else:
-            logger.info("All downloads completed successfully")
+            logger.info("All dowloads completed successfully")
             return 0
 
-    except Exception as e:
-        logger.error(f"Data ingestion failed: {e}")
+    except Exceptio as e:
+        logger.error(f"Data ingestio failed: {e}")
         return 1
 
 

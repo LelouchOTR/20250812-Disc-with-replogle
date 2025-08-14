@@ -7,7 +7,6 @@ sys.path.insert(0, 'src')
 
 from models.discrepancy_vae import DiscrepancyVAE, get_model_summary
 
-# Example configuration
 config = {
     'model_params': {
         'latent_dim': 32,
@@ -24,14 +23,11 @@ config = {
     }
 }
 
-# Create model
-input_dim = 2000  # Example: 2000 genes
+input_dim = 2000
 model = DiscrepancyVAE(input_dim=input_dim, config=config)
 
-# Print model summary
 print(get_model_summary(model))
 
-# Test forward pass
 batch_size = 32
 x = torch.randn(batch_size, input_dim)
 

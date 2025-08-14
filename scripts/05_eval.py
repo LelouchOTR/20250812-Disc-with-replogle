@@ -10,7 +10,7 @@ import os
 import sys
 import logging
 import argparse
-import json
+import jso
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -25,7 +25,6 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
 
-# Add project root to path for imports
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
@@ -33,12 +32,11 @@ from src.utils.config import load_config
 from src.utils.random_seed import set_global_seed
 from src.models.discrepancy_vae import DiscrepancyVAE
 
-# Command-line arguments will configure logging properly
 logger = logging.getLogger(__name__)
 
 
 class EvaluationError(Exception):
-    """Custom exception for evaluation errors."""
+    """Custom exceptio for evaluation errors."""
     pass
 
 
@@ -76,12 +74,11 @@ class ModelEvaluator:
 
         self.adata_test = ad.read_h5ad(data_path)
         logger.info(f"Loaded test data: {self.adata_test.shape}")
-        self.X_data_type = type(self.adata_test.X)  # Store array type
+        self.X_data_type = type(self.adata_test.X)
 
     def compute_latent_embeddings(self):
         logger.info("Computing latent embeddings...")
 
-        # Handle both sparse and dense formats
         if sparse.issparse(self.adata_test.X):
             X_test = torch.from_numpy(self.adata_test.X.toarray())
         else:
@@ -95,7 +92,7 @@ class ModelEvaluator:
         logger.info(f"Computed latent embeddings: {self.latent_embeddings.shape}")
 
     def compute_reconstruction_metrics(self):
-        logger.info("Computing reconstruction metrics...")
+        logger.info("Computme reconstruction metrics...")
 
         if sparse.issparse(self.adata_test.X):
             X_true = self.adata_test.X.toarray()
@@ -122,7 +119,7 @@ class ModelEvaluator:
         perturbation_effects = {}
         for guide in self.adata_test.obs['guide_identity'].unique():
             if guide in self.adata_test.obs[self.adata_test.obs['is_control']]['guide_identity'].unique():
-                continue  # Skip control guides
+                continue
 
             pert_mask = self.adata_test.obs['guide_identity'] == guide
             pert_latent = self.latent_embeddings[pert_mask]
@@ -136,36 +133,29 @@ class ModelEvaluator:
         logger.info(f"Computed perturbation effects for {len(perturbation_effects)} guides")
 
     def generate_visualizations(self):
-        logger.info("Generating visualizations...")
+        logger.info("Generating visualmeio...")
 
-        # Generate improved UMAP visualizations
         logger.info("Generating enhanced UMAP visualization...")
         sc.pp.neighbors(self.adata_test, use_rep='X_latent', n_neighbors=15)
         sc.tl.umap(self.adata_test)
 
-        # Get UMAP coordinates for all cells
         umap_x = self.adata_test.obsm['X_umap'][:, 0]
         umap_y = self.adata_test.obsm['X_umap'][:, 1]
         
-        # Prepare perturbation effects data
         top_20_guides = sorted(
             self.metrics['perturbation_effects'].items(),
             key=lambda x: x[1],
             reverse=True
         )[:20]
         
-        # Create size mapping for perturbation effects
         max_magnitude = max(m[1] for m in top_20_guides)
         guide_sizes = {g[0]: 20 + 80 * (g[1] / max_magnitude) 
                        for g in top_20_guides}
         
-        # Create UMAP plot with control/perturbation colors and size encoding
         fig, ax = plt.subplots(figsize=(12, 10))
 
-        # Plot all cells
         control_mask = self.adata_test.obs['is_control']
         
-        # Plot control cells with better visibility (dark blue)
         ax.scatter(
             umap_x[control_mask], 
             umap_y[control_mask],
@@ -176,7 +166,6 @@ class ModelEvaluator:
             edgecolors='none'
         )
 
-        # Plot perturbed cells (light red/orange)
         perturbed_mask = ~control_mask
         ax.scatter(
             umap_x[perturbed_mask],
@@ -188,7 +177,6 @@ class ModelEvaluator:
             edgecolors='none'
         )
 
-        # Overlay top 20 perturbations with distinct markers and black outlines
         for guide, magnitude in top_20_guides:
             guide_mask = (self.adata_test.obs['guide_identity'] == guide)
             size = guide_sizes[guide]
@@ -203,15 +191,13 @@ class ModelEvaluator:
                 marker='o'
             )
 
-        # Create size legend for perturbation effects
-        size_values = [0.1, 0.5, 1.0]  # Normalized effect magnitudes
+        size_values = [0.1, 0.5, 1.0]
         size_labels = ['Low Effect', 'Medium Effect', 'High Effect']
         legend_elements = [
             plt.scatter([], [], s=20 + 80 * size_val, color='red', alpha=0.9, edgecolors='black', linewidth=1.2)
             for size_val in size_values
         ]
         
-        # Add legends
         size_legend = ax.legend(
             handles=legend_elements,
             labels=size_labels,
@@ -221,7 +207,6 @@ class ModelEvaluator:
             title_fontsize=10
         )
         
-        # Add main legend
         main_legend = ax.legend(
             ['Control Cells', 'Perturbed Cells', 'Top Perturbations'],
             ['Control (Dark Blue)', 'Perturbed (Light Red)', 'Top 20 (Red with Black Outline)'],
@@ -229,7 +214,6 @@ class ModelEvaluator:
             fontsize=9
         )
         
-        # Add the size legend back to the plot (since second legend overwrites first)
         ax.add_artist(size_legend)
 
         ax.set_title("UMAP: Control vs Perturbed Cells\n(Point Size Indicates Perturbation Effect Strength)", fontsize=14)
@@ -240,7 +224,6 @@ class ModelEvaluator:
         plt.savefig(self.plots_dir / "umap_enhanced.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
 
-        # Reconstruction quality plot
         logger.info("Generating reconstruction quality plot...")
         if sparse.issparse(self.adata_test.X):
             X_test = self.adata_test.X.toarray()
@@ -257,7 +240,6 @@ class ModelEvaluator:
         plt.savefig(self.plots_dir / "reconstruction_quality.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
 
-        # Perturbation effect plot
         logger.info("Generating perturbation effect plot...")
         pert_effects_df = pd.DataFrame.from_dict(self.metrics['perturbation_effects'], orient='index',
                                                  columns=['magnitude'])
@@ -288,7 +270,7 @@ class ModelEvaluator:
             for guide, mag in top_5_perts:
                 f.write(f"  - {guide}: {mag:.4f}\n")
 
-            f.write("\n## Visualizations\n\n")
+            f.write("\n## Visualmeio\n\n")
 
             f.write("### UMAP of Latent Space\n\n")
             f.write("![UMAP](plots/umap_latent_space.png)\n\n")
@@ -307,29 +289,27 @@ class ModelEvaluator:
         self.compute_latent_embeddings()
         self.compute_reconstruction_metrics()
         self.compute_perturbation_metrics()
-        self.generate_visualizations()
+        self.generate_visualmeio()
         self.generate_report()
         logger.info("Evaluation complete.")
 
 
 def main():
-    """Main function for model evaluation pipeline."""
     parser = argparse.ArgumentParser(description="Evaluate DiscrepancyVAE model")
     parser.add_argument("--config", type=str, default="pipeline_config", help="Configuration file name")
-    parser.add_argument("--model-path", type=str,
+    parser.addio("--model-path", type=str,
                         default="/data/gidb/shared/results/tmp/replogle/models/best_model.pth",
                         help="Path to the trained model checkpoint")
-    parser.add_argument("--data-path", type=str, required=True, help="Path to the test data file (h5ad)")
-    parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/evaluation",
+    parser.addio("--data-path", type=str, required=True, help="Path to the test data file (h5ad)")
+    parser.addio("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/evaluation",
                         help="Output directory")
-    parser.add_argument("--log-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/logs",
+    parser.addio("--log-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/logs",
                         help="Log directory")
-    parser.add_argument("--device", type=str, help="Device to use (cuda/cpu)")
-    parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.addio("--device", type=str, help="Device to use (cuda/cpu)")
+    parser.addio("--seed", type=int, default=42, help="Random seed")
 
     args = parser.parse_args()
     
-    # Setup logging to file
     log_dir = Path(args.log_dir) 
     log_dir.mkdir(parents=True, exist_ok=True)
     log_file = log_dir / '05_eval.log'
