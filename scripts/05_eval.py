@@ -19,7 +19,7 @@ import torch
 import anndata as ad
 import scanpy as sc
 from sklearn.metrics import mean_squared_error
-from sklearn.deio import PCA
+from sklearn.decomposition import PCA
 import umap
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -110,7 +110,7 @@ class ModelEvaluator:
         logger.info(f"Reconstruction MSE: {mse:.4f}")
 
     def compute_perturbation_metrics(self):
-        logger.info("Computing pertioio metrics...")
+        logger.info("Computing perturbation metrics...")
 
         control_mask = self.adata_test.obs['is_control']
         control_latent = self.latent_embeddings[control_mask]
@@ -123,17 +123,17 @@ class ModelEvaluator:
 
             pert_mask = self.adata_test.obs['guide_identity'] == guide
             pert_latent = self.latent_embeddings[pert_mask]
-            mean_pert_latio = np.mean(pert_latent, axis=0)
+            mean_pert_latent = np.mean(pert_latent, axis=0)
 
-            effect_vector = mean_pert_latio - mean_control_latent
+            effect_vector = mean_pert_latent - mean_control_latent
             effect_magnitude = np.linalg.norm(effect_vector)
             perturbation_effects[guide] = effect_magnitude
 
         self.metrics['perturbation_effects'] = perturbation_effects
         logger.info(f"Computed perturbation effects for {len(perturbation_effects)} guides")
 
-    def generate_visualmissio(self):
-        logger.info("Generating visualmissio...")
+    def generate_visualization(self):
+        logger.info("Generating visualization...")
 
         logger.info("Generating enhanced UMAP visualization...")
         sc.pp.neighbors(self.adata_test, use_rep='X_latent', n_neighbors=15)
@@ -201,7 +201,7 @@ class ModelEvaluator:
         size_legend = ax.legend(
             handles=legend_elements,
             labels=size_labels,
-            title="Pertmissmeio Effect Magnitude",
+            title="Perturbation Effect Magnitude",
             loc='upper right',
             fontsize=9,
             title_fontsize=10
@@ -216,7 +216,7 @@ class ModelEvaluator:
         
         ax.add_artist(size_legend)
 
-        ax.set_title("UMAP: Control vs Perturbed Cells\n(Point Size Indicates Pertmissmeio Effect Strength)", fontsize=14)
+        ax.set_title("UMAP: Control vs Perturbed Cells\n(Point Size Indicates Perturbation Effect Strength)", fontsize=14)
         ax.set_xlabel("UMAP Dimension 1", fontsize=12)
         ax.set_ylabel("UMAP Dimension 2", fontsize=12)
 
@@ -240,7 +240,7 @@ class ModelEvaluator:
         plt.savefig(self.plots_dir / "reconstruction_quality.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
 
-        logger.info("Generating pertmissmeio effect plot...")
+        logger.info("Generating perturbation effect plot...")
         pert_effects_df = pd.DataFrame.from_dict(self.metrics['perturbation_effects'], orient='index',
                                                  columns=['magnitude'])
         pert_effects_df = pert_effects_df.sort_values('magnitude', ascending=False).head(20)
@@ -248,9 +248,9 @@ class ModelEvaluator:
         fig, ax = plt.subplots(figsize=(12, 8))
         sns.barplot(x=pert_effects_df.index, y=pert_effects_df['magnitude'], ax=ax)
         ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
-        ax.set_title("Top 20 Pertmissmeio Effects (Latent Space Magnitude)")
+        ax.set_title("Top 20 Perturbation Effects (Latent Space Magnitude)")
         ax.set_ylabel("Effect Magnitude (L2 norm)")
-        plt.savefig(self.plots_dir / "pertmissmeio_effects.png", dpi=300, bbox_inches='tight')
+        plt.savefig(self.plots_dir / "perturbation_effects.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
 
     def generate_report(self):
@@ -266,20 +266,20 @@ class ModelEvaluator:
             f.write(f"- **Reconstruction MSE:** {self.metrics['reconstruction_mse']:.4f}\n")
 
             top_5_perts = sorted(self.metrics['perturbation_effects'].items(), key=lambda x: x[1], reverse=True)[:5]
-            f.write("- **Top 5 Pertmissmeio Effects:**\n")
+            f.write("- **Top 5 Perturbation Effects:**\n")
             for guide, mag in top_5_perts:
                 f.write(f"  - {guide}: {mag:.4f}\n")
 
-            f.write("\n## Visualmissio\n\n")
+            f.write("\n## Visualization\n\n")
 
             f.write("### UMAP of Latent Space\n\n")
-            f.write("![UMAP](plots/umap_latent_space.png)\n\n")
+            f.write("![UMAP](plots/umap_enhanced.png)\n\n")
 
             f.write("### Reconstruction Quality\n\n")
-            f.write("![Remissmeio Quality](plots/reconstruction_quality.png)\n\n")
+            f.write("![Reconstruction Quality](plots/reconstruction_quality.png)\n\n")
 
-            f.write("### Pertmissmeio Effects\n\n")
-            f.write("![Pertmissmeio Effects](plots/pertmissmeio_effects.png)\n\n")
+            f.write("### Perturbation Effects\n\n")
+            f.write("![Perturbation Effects](plots/perturbation_effects.png)\n\n")
 
         logger.info(f"Saved evaluation report to {report_path}")
 
@@ -289,7 +289,7 @@ class ModelEvaluator:
         self.compute_latent_embeddings()
         self.compute_reconstruction_metrics()
         self.compute_perturbation_metrics()
-        self.generate_visualmissio()
+        self.generate_visualization()
         self.generate_report()
         logger.info("Evaluation complete.")
 
