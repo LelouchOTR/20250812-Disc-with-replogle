@@ -30,7 +30,7 @@ sys.path.insert(0, str(project_root))
 
 from src.utils.config import load_config
 from src.utils.random_seed import set_global_seed
-from src.models.discrepancy_vae import DiscrepanmeVAE
+from src.models.discrepancy_vae import DiscrepancyVAE
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +65,7 @@ class ModelEvaluator:
         if not model_path.exists():
             raise EvaluationError(f"Model file not found: {model_path}")
 
-        self.model, _ = DiscrepanmeVAE.load_checkpoint(model_path, device=self.device)
+        self.model, _ = DiscrepancyVAE.load_checkpoint(model_path, device=self.device)
         self.model.eval()
 
         logger.info(f"Loading test data from {data_path}")
