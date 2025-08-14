@@ -165,30 +165,30 @@ class ModelEvaluator:
         # Plot all cells
         control_mask = self.adata_test.obs['is_control']
         
-        # Plot control cells (blue)
+        # Plot control cells with better visibility (dark blue)
         ax.scatter(
             umap_x[control_mask], 
             umap_y[control_mask],
-            color='blue',
-            s=10,
-            alpha=0.3,
+            color='darkblue',
+            s=15,
+            alpha=0.7,
             label='Control Cells',
             edgecolors='none'
         )
 
-        # Plot perturbed cells with size encoding (red)
+        # Plot perturbed cells (light red/orange)
         perturbed_mask = ~control_mask
         ax.scatter(
             umap_x[perturbed_mask],
             umap_y[perturbed_mask],
-            color='red',
-            s=20,  # Base size for perturbed cells
+            color='lightcoral',
+            s=25,
             alpha=0.6,
             label='Perturbed Cells',
             edgecolors='none'
         )
 
-        # Overlay top 20 perturbations with varying sizes
+        # Overlay top 20 perturbations with distinct markers and black outlines
         for guide, magnitude in top_20_guides:
             guide_mask = (self.adata_test.obs['guide_identity'] == guide)
             size = guide_sizes[guide]
@@ -197,21 +197,22 @@ class ModelEvaluator:
                 umap_y[guide_mask],
                 color='red',
                 s=size,
-                alpha=0.8,
+                alpha=0.9,
                 edgecolors='black',
-                linewidth=0.5
+                linewidth=1.2,
+                marker='o'
             )
 
-        # Create size legend
+        # Create size legend for perturbation effects
         size_values = [0.1, 0.5, 1.0]  # Normalized effect magnitudes
         size_labels = ['Low Effect', 'Medium Effect', 'High Effect']
         legend_elements = [
-            plt.scatter([], [], s=20 + 80 * size_val, color='red', alpha=0.8, edgecolors='black', linewidth=0.5)
+            plt.scatter([], [], s=20 + 80 * size_val, color='red', alpha=0.9, edgecolors='black', linewidth=1.2)
             for size_val in size_values
         ]
         
         # Add legends
-        ax.legend(
+        size_legend = ax.legend(
             handles=legend_elements,
             labels=size_labels,
             title="Perturbation Effect Magnitude",
@@ -220,13 +221,16 @@ class ModelEvaluator:
             title_fontsize=10
         )
         
-        # Add control/perturbation legend
-        ax.legend(
-            ['Control Cells', 'Perturbed Cells'],
-            ['Control (Blue)', 'Perturbed (Red)'],
+        # Add main legend
+        main_legend = ax.legend(
+            ['Control Cells', 'Perturbed Cells', 'Top Perturbations'],
+            ['Control (Dark Blue)', 'Perturbed (Light Red)', 'Top 20 (Red with Black Outline)'],
             loc='upper left',
             fontsize=9
         )
+        
+        # Add the size legend back to the plot (since second legend overwrites first)
+        ax.add_artist(size_legend)
 
         ax.set_title("UMAP: Control vs Perturbed Cells\n(Point Size Indicates Perturbation Effect Strength)", fontsize=14)
         ax.set_xlabel("UMAP Dimension 1", fontsize=12)
