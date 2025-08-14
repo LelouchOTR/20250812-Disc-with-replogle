@@ -35,15 +35,7 @@ from src.utils.config import load_config
 from src.utils.random_seed import set_global_seed
 from src.utils.gene_ids import get_gene_mapper
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('graph_generation.log')
-    ]
-)
+# Command-line arguments will configure logging properly
 logger = logging.getLogger(__name__)
 
 
@@ -793,6 +785,8 @@ def main():
     parser.add_argument("--config", type=str, default="graph_config", help="Configuration file name")
     parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/graphs",
                         help="Output directory")
+    parser.add_argument("--log-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/logs",
+                        help="Log directory")
     parser.add_argument("--cache-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/cache/go",
                         help="Cache directory")
     parser.add_argument("--force-refresh", action="store_true", help="Force refresh of cached data")
@@ -800,6 +794,19 @@ def main():
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
 
     args = parser.parse_args()
+    
+    # Setup logging to file
+    log_dir = Path(args.log_dir) 
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / '03_graphs.log'
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(log_file)
+        ]
+    )
 
     # Set random seed
     set_global_seed(args.seed)

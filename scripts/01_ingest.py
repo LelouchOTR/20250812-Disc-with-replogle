@@ -32,15 +32,7 @@ sys.path.insert(0, str(project_root))
 from src.utils.config import load_config
 from src.utils.random_seed import set_global_seed
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('data_ingestion.log')
-    ]
-)
+# Command-line arguments will configure logging properly
 logger = logging.getLogger(__name__)
 
 

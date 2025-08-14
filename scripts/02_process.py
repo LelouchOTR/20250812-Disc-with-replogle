@@ -35,15 +35,7 @@ from src.utils.gene_ids import get_gene_mapper, standardize_gene_list
 sc.settings.verbosity = 1  # Reduce scanpy verbosity
 sc.settings.set_figure_params(dpi=80, facecolor='white')
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('data_processing.log')
-    ]
-)
+# Command-line arguments will configure logging properly
 logger = logging.getLogger(__name__)
 
 # Suppress warnings for cleaner output
@@ -589,9 +581,24 @@ def main():
     parser.add_argument("--config", type=str, default="data_config", help="Configuration file name")
     parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/processed",
                         help="Output directory")
+    parser.add_argument("--log-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/logs",
+                        help="Log directory")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
 
     args = parser.parse_args()
+    
+    # Setup logging to file
+    log_dir = Path(args.log_dir) 
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / '02_process.log'
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(log_file)
+        ]
+    )
 
     # Set random seed
     set_global_seed(args.seed)

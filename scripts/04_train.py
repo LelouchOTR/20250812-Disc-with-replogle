@@ -48,15 +48,7 @@ from src.models.discrepancy_vae import (
     DiscrepancyVAE, SingleCellDataset, create_data_loaders, get_model_summary
 )
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('training.log')
-    ]
-)
+# Command-line arguments will configure logging properly
 logger = logging.getLogger(__name__)
 
 
@@ -70,27 +62,27 @@ class ModelTrainer:
     Trainer class for DiscrepancyVAE model.
     """
 
-    def __init__(self, config: Dict[str, Any], output_dir: Path, device: torch.device):
+    def __init__(self, config: Dict[str, Any], output_dir: Path, log_dir: Path, device: torch.device):
         """
         Initialize model trainer.
         
         Args:
             config: Training configuration dictionary
-            output_dir: Output directory for models and logs
+            output_dir: Output directory for models
+            log_dir: Log directory for logs and plots
             device: Device to train on
         """
         self.config = config
         self.output_dir = Path(output_dir)
+        self.log_dir = Path(log_dir)
         self.device = device
 
-        # Create output directories
+        # Create required directories
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.plots_dir = self.log_dir / 'plots'
+        self.plots_dir.mkdir(exist_ok=True)
         self.models_dir = self.output_dir  # Models go directly in output dir
-        self.logs_dir = self.output_dir / 'logs'
-        self.plots_dir = self.output_dir / 'plots'
-
-        # Only create logs and plots subdirectories
-        for dir_path in [self.logs_dir, self.plots_dir]:
-            dir_path.mkdir(parents=True, exist_ok=True)
 
         # Extract training parameters
         self.training_params = config.get('training', {})
@@ -292,9 +284,12 @@ class ModelTrainer:
                 self.scheduler = None
 
         # Initialize tensorboard writer
+        # Initialize tensorboard writer
+        tensorboard_dir = self.log_dir / 'tensorboard'
+        tensorboard_dir.mkdir(exist_ok=True)
         if TENSORBOARD_AVAILABLE:
             try:
-                self.writer = SummaryWriter(log_dir=self.logs_dir / 'tensorboard')
+                self.writer = SummaryWriter(log_dir=tensorboard_dir)
             except Exception as e:
                 logger.warning(f"Failed to initialize TensorBoard writer: {e}")
                 self.writer = None
@@ -586,7 +581,7 @@ class ModelTrainer:
         }
 
         # Save as JSON
-        summary_path = self.logs_dir / 'training_summary.json'
+        summary_path = self.log_dir / 'training_summary.json'
         with open(summary_path, 'w') as f:
             json.dump(summary, f, indent=2)
 
@@ -594,12 +589,12 @@ class ModelTrainer:
         if self.train_history:
             train_df = pd.DataFrame(self.train_history)
             train_df.index.name = 'epoch'
-            train_df.to_csv(self.logs_dir / 'train_history.csv')
+            train_df.to_csv(self.log_dir / 'train_history.csv')
 
         if self.val_history:
             val_df = pd.DataFrame(self.val_history)
             val_df.index.name = 'epoch'
-            val_df.to_csv(self.logs_dir / 'val_history.csv')
+            val_df.to_csv(self.log_dir / 'val_history.csv')
 
         logger.info(f"Saved training summary to {summary_path}")
 
@@ -726,11 +721,26 @@ def main():
     parser.add_argument("--graph-dir", type=str, help="Gene adjacency graph directory")
     parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/models",
                         help="Output directory")
+    parser.add_argument("--log-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/logs",
+                        help="Log directory")
     parser.add_argument("--device", type=str, help="Device to use (cuda/cpu)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--resume", type=str, help="Resume training from checkpoint")
 
     args = parser.parse_args()
+    
+    # Setup logging to file
+    log_dir = Path(args.log_dir) 
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / '04_train.log'
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(log_file)
+        ]
+    )
 
     # Set random seed
     set_global_seed(args.seed)
@@ -756,7 +766,7 @@ def main():
 
     try:
         # Initialize trainer
-        trainer = ModelTrainer(config, args.output_dir, device)
+        trainer = ModelTrainer(config, args.output_dir, args.log_dir, device)
 
         # Load data
         trainer.load_data(args.data_dir)

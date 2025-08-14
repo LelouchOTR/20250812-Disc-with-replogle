@@ -20,15 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent / 'src'))
 from src.utils.config import load_config
 from src.utils.random_seed import set_global_seed
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('pipeline.log')
-    ]
-)
+# Command-line arguments will configure logging properly
 logger = logging.getLogger(__name__)
 
 
@@ -162,6 +154,7 @@ def run_ingest(config: dict, run_dirs: dict, seed: int):
     output_dir = run_dirs.get('raw')
     cmd = [
         "python", "scripts/01_ingest.py",
+        "--log-dir", run_dirs['logs'],
         "--output-dir", output_dir,
         "--seed", str(seed)
     ]
@@ -177,7 +170,7 @@ def run_process(config: dict, run_dirs: dict, seed: int):
     # Find the main data file - try different naming patterns
     raw_data_files = [f for f in os.listdir(raw_data_dir) 
                      if f.endswith('.h5ad.gz') or f.endswith('.h5ad') or 'h5ad' in f]
-        
+            
     if not raw_data_files:
         # If no files match patterns, try all files
         all_files = [f for f in os.listdir(raw_data_dir)]
@@ -201,6 +194,7 @@ def run_process(config: dict, run_dirs: dict, seed: int):
     output_dir = run_dirs.get('processed')
     cmd = [
         "python", "scripts/02_process.py",
+        "--log-dir", run_dirs['logs'],
         "--input", raw_data_file,
         "--output-dir", output_dir,
         "--config", "data_config",
@@ -216,6 +210,7 @@ def run_graphs(config: dict, run_dirs: dict, seed: int):
     output_dir = run_dirs.get('graphs')
     cmd = [
         "python", "scripts/03_graphs.py",
+        "--log-dir", run_dirs['logs'],
         "--output-dir", output_dir,
         "--config", "graph_config",
         "--seed", str(seed)
@@ -233,6 +228,7 @@ def run_train(config: dict, run_dirs: dict, seed: int):
 
     cmd = [
         "python", "scripts/04_train.py",
+        "--log-dir", run_dirs['logs'],
         "--data-dir", data_dir,
         "--output-dir", model_dir,
         "--config", "model_config",
@@ -254,6 +250,7 @@ def run_evaluate(config: dict, run_dirs: dict, seed: int):
 
     cmd = [
         "python", "scripts/05_eval.py",
+        "--log-dir", run_dirs['logs'],
         "--model-path", model_path,
         "--data-path", data_path,
         "--output-dir", output_dir,
@@ -290,6 +287,17 @@ def main():
 
     # Create timestamped run directory structure and configure run logging
     run_dirs = create_run_dirs(config, args)
+    
+    # Setup logging for the pipeline script itself
+    logging_file = run_dirs['logs'] + '/pipeline.log'
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(logging_file)
+        ]
+    )
 
     steps_to_run = args.steps
     if 'all' in steps_to_run:

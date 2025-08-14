@@ -33,15 +33,7 @@ from src.utils.config import load_config
 from src.utils.random_seed import set_global_seed
 from src.models.discrepancy_vae import DiscrepancyVAE
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('evaluation.log')
-    ]
-)
+# Command-line arguments will configure logging properly
 logger = logging.getLogger(__name__)
 
 
@@ -55,11 +47,12 @@ class ModelEvaluator:
     Evaluator class for the DiscrepancyVAE model.
     """
 
-    def __init__(self, config: dict, output_dir: Path, device: torch.device):
+    def __init__(self, config: dict, output_dir: Path, log_dir: Path, device: torch.device):
         self.config = config
         self.output_dir = Path(output_dir)
+        self.log_dir = Path(log_dir)
         self.device = device
-        self.plots_dir = self.output_dir / "plots"
+        self.plots_dir = self.log_dir / "plots"
         self.plots_dir.mkdir(parents=True, exist_ok=True)
 
         self.model = None
@@ -278,10 +271,25 @@ def main():
     parser.add_argument("--data-path", type=str, required=True, help="Path to the test data file (h5ad)")
     parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/evaluation",
                         help="Output directory")
+    parser.add_argument("--log-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/logs",
+                        help="Log directory")
     parser.add_argument("--device", type=str, help="Device to use (cuda/cpu)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
 
     args = parser.parse_args()
+    
+    # Setup logging to file
+    log_dir = Path(args.log_dir) 
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = log_dir / '05_eval.log'
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(log_file)
+        ]
+    )
 
     set_global_seed(args.seed)
 
@@ -294,7 +302,7 @@ def main():
 
     config = load_config(args.config)
 
-    evaluator = ModelEvaluator(config, Path(args.output_dir), device)
+    evaluator = ModelEvaluator(config, Path(args.output_dir), Path(args.log_dir), device)
     evaluator.evaluate(Path(args.model_path), Path(args.data_path))
 
 
