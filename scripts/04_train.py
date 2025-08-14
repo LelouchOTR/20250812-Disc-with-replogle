@@ -320,6 +320,8 @@ class ModelTrainer:
         # Single progress bar for epoch with dynamic columns
         pbar = tqdm(total=len(self.train_loader),
                     desc=f"Epoch {epoch + 1}/{self.epochs}",
+                    position=0,
+                    leave=True,
                     dynamic_ncols=True)
 
         for batch_idx, batch in enumerate(self.train_loader):
@@ -388,7 +390,7 @@ class ModelTrainer:
         epoch_losses = defaultdict(list)
 
         with torch.no_grad():
-            for batch in tqdm(self.val_loader, desc='Validation'):
+            for batch in tqdm(self.val_loader, desc='Validation', position=0, leave=True):
                 # Move batch to device
                 x = batch['x'].to(self.device)
                 is_control = batch['is_control'].to(self.device)
