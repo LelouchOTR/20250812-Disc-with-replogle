@@ -156,6 +156,7 @@ class ModelEvaluator:
 
         control_mask = self.adata_test.obs['is_control']
         
+        # Plot control cells
         ax.scatter(
             umap_x[control_mask], 
             umap_y[control_mask],
@@ -166,6 +167,7 @@ class ModelEvaluator:
             edgecolors='none'
         )
 
+        # Plot all perturbed cells
         perturbed_mask = ~control_mask
         ax.scatter(
             umap_x[perturbed_mask],
@@ -177,20 +179,17 @@ class ModelEvaluator:
             edgecolors='none'
         )
 
-        # Plot top 20 perturbations with black outline
-        # We'll collect all the points first and then plot them together
-        top_pert_x = []
-        top_pert_y = []
+        # Re-plot only the top 20 perturbed cells with black outline
+        # This ensures they appear on top of the light red perturbed cells
+        top_pert_mask = self.adata_test.obs['guide_identity'].isin([g[0] for g in top_20_guides])
+        top_pert_x = umap_x[top_pert_mask]
+        top_pert_y = umap_y[top_pert_mask]
+        
+        # Get sizes for top perturbations
         top_pert_sizes = []
+        for guide in self.adata_test.obs.loc[top_pert_mask, 'guide_identity']:
+            top_pert_sizes.append(guide_sizes[guide])
         
-        for guide, magnitude in top_20_guides:
-            guide_mask = (self.adata_test.obs['guide_identity'] == guide)
-            top_pert_x.extend(umap_x[guide_mask])
-            top_pert_y.extend(umap_y[guide_mask])
-            size = guide_sizes[guide]
-            top_pert_sizes.extend([size] * np.sum(guide_mask))
-        
-        # Plot all top perturbations as one scatter plot for cleaner legend
         ax.scatter(
             top_pert_x,
             top_pert_y,
