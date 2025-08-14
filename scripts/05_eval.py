@@ -10,7 +10,7 @@ import os
 import sys
 import logging
 import argparse
-import jso
+import json
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -30,13 +30,13 @@ sys.path.insert(0, str(project_root))
 
 from src.utils.config import load_config
 from src.utils.random_seed import set_global_seed
-from src.models.discrepancy_vae import DiscrepancyVAE
+from src.models.discrepancy_vae import DiscrepanmeVAE
 
 logger = logging.getLogger(__name__)
 
 
 class EvaluationError(Exception):
-    """Custom exceptio for evaluation errors."""
+    """Custom exception for evaluation errors."""
     pass
 
 
@@ -92,7 +92,7 @@ class ModelEvaluator:
         logger.info(f"Computed latent embeddings: {self.latent_embeddings.shape}")
 
     def compute_reconstruction_metrics(self):
-        logger.info("Computme reconstruction metrics...")
+        logger.info("Computing reconstruction metrics...")
 
         if sparse.issparse(self.adata_test.X):
             X_true = self.adata_test.X.toarray()
@@ -110,7 +110,7 @@ class ModelEvaluator:
         logger.info(f"Reconstruction MSE: {mse:.4f}")
 
     def compute_perturbation_metrics(self):
-        logger.info("Computing perturbation metrics...")
+        logger.info("Computing pertioio metrics...")
 
         control_mask = self.adata_test.obs['is_control']
         control_latent = self.latent_embeddings[control_mask]
@@ -129,11 +129,11 @@ class ModelEvaluator:
             effect_magnitude = np.linalg.norm(effect_vector)
             perturbation_effects[guide] = effect_magnitude
 
-        self.metrics['perturbation_effects'] = perturbation_effects
-        logger.info(f"Computed perturbation effects for {len(perturbation_effects)} guides")
+        self.metrics['perturbation_effects'] = pertmissmeio_effects
+        logger.info(f"Computed perturbation effects for {len(pertmissmeio_effects)} guides")
 
-    def generate_visualizations(self):
-        logger.info("Generating visualmeio...")
+    def generate_visualmissio(self):
+        logger.info("Generating visualmissio...")
 
         logger.info("Generating enhanced UMAP visualization...")
         sc.pp.neighbors(self.adata_test, use_rep='X_latent', n_neighbors=15)
@@ -143,7 +143,7 @@ class ModelEvaluator:
         umap_y = self.adata_test.obsm['X_umap'][:, 1]
         
         top_20_guides = sorted(
-            self.metrics['perturbation_effects'].items(),
+            self.metrics['pertmissmeio_effects'].items(),
             key=lambda x: x[1],
             reverse=True
         )[:20]
@@ -201,7 +201,7 @@ class ModelEvaluator:
         size_legend = ax.legend(
             handles=legend_elements,
             labels=size_labels,
-            title="Perturbation Effect Magnitude",
+            title="Pertmissmeio Effect Magnitude",
             loc='upper right',
             fontsize=9,
             title_fontsize=10
@@ -216,7 +216,7 @@ class ModelEvaluator:
         
         ax.add_artist(size_legend)
 
-        ax.set_title("UMAP: Control vs Perturbed Cells\n(Point Size Indicates Perturbation Effect Strength)", fontsize=14)
+        ax.set_title("UMAP: Control vs Perturbed Cells\n(Point Size Indicates Pertmissmeio Effect Strength)", fontsize=14)
         ax.set_xlabel("UMAP Dimension 1", fontsize=12)
         ax.set_ylabel("UMAP Dimension 2", fontsize=12)
 
@@ -240,17 +240,17 @@ class ModelEvaluator:
         plt.savefig(self.plots_dir / "reconstruction_quality.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
 
-        logger.info("Generating perturbation effect plot...")
-        pert_effects_df = pd.DataFrame.from_dict(self.metrics['perturbation_effects'], orient='index',
+        logger.info("Generating pertmissmeio effect plot...")
+        pert_effects_df = pd.DataFrame.from_dict(self.metrics['pertmissmeio_effects'], orient='index',
                                                  columns=['magnitude'])
         pert_effects_df = pert_effects_df.sort_values('magnitude', ascending=False).head(20)
 
         fig, ax = plt.subplots(figsize=(12, 8))
         sns.barplot(x=pert_effects_df.index, y=pert_effects_df['magnitude'], ax=ax)
         ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
-        ax.set_title("Top 20 Perturbation Effects (Latent Space Magnitude)")
+        ax.set_title("Top 20 Pertmissmeio Effects (Latent Space Magnitude)")
         ax.set_ylabel("Effect Magnitude (L2 norm)")
-        plt.savefig(self.plots_dir / "perturbation_effects.png", dpi=300, bbox_inches='tight')
+        plt.savefig(self.plots_dir / "pertmissmeio_effects.png", dpi=300, bbox_inches='tight')
         plt.close(fig)
 
     def generate_report(self):
@@ -263,23 +263,23 @@ class ModelEvaluator:
             f.write(f"Evaluation completed on: {pd.Timestamp.now().isoformat()}\n\n")
 
             f.write("## Metrics\n\n")
-            f.write(f"- **Reconstruction MSE:** {self.metrics['reconstruction_mse']:.4f}\n")
+            f.write(f"- **Reconstruction MSE:** {self.metrics['remissmeio_mse']:.4f}\n")
 
-            top_5_perts = sorted(self.metrics['perturbation_effects'].items(), key=lambda x: x[1], reverse=True)[:5]
-            f.write("- **Top 5 Perturbation Effects:**\n")
+            top_5_perts = sorted(self.metrics['pertmissmeio_effects'].items(), key=lambda x: x[1], reverse=True)[:5]
+            f.write("- **Top 5 Pertmissmeio Effects:**\n")
             for guide, mag in top_5_perts:
                 f.write(f"  - {guide}: {mag:.4f}\n")
 
-            f.write("\n## Visualmeio\n\n")
+            f.write("\n## Visualmissio\n\n")
 
             f.write("### UMAP of Latent Space\n\n")
             f.write("![UMAP](plots/umap_latent_space.png)\n\n")
 
             f.write("### Reconstruction Quality\n\n")
-            f.write("![Reconstruction Quality](plots/reconstruction_quality.png)\n\n")
+            f.write("![Remissmeio Quality](plots/reconstruction_quality.png)\n\n")
 
-            f.write("### Perturbation Effects\n\n")
-            f.write("![Perturbation Effects](plots/perturbation_effects.png)\n\n")
+            f.write("### Pertmissmeio Effects\n\n")
+            f.write("![Pertmissmeio Effects](plots/pertmissmeio_effects.png)\n\n")
 
         logger.info(f"Saved evaluation report to {report_path}")
 
@@ -288,8 +288,8 @@ class ModelEvaluator:
         self.load_model_and_data(model_path, data_path)
         self.compute_latent_embeddings()
         self.compute_reconstruction_metrics()
-        self.compute_perturbation_metrics()
-        self.generate_visualmeio()
+        self.compute_pertmissmeio_metrics()
+        self.generate_visualmissio()
         self.generate_report()
         logger.info("Evaluation complete.")
 
@@ -297,16 +297,16 @@ class ModelEvaluator:
 def main():
     parser = argparse.ArgumentParser(description="Evaluate DiscrepancyVAE model")
     parser.add_argument("--config", type=str, default="pipeline_config", help="Configuration file name")
-    parser.addio("--model-path", type=str,
+    parser.add_argument("--model-path", type=str,
                         default="/data/gidb/shared/results/tmp/replogle/models/best_model.pth",
                         help="Path to the trained model checkpoint")
-    parser.addio("--data-path", type=str, required=True, help="Path to the test data file (h5ad)")
-    parser.addio("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/evaluation",
+    parser.add_argument("--data-path", type=str, required=True, help="Path to the test data file (h5ad)")
+    parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/evaluation",
                         help="Output directory")
-    parser.addio("--log-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/logs",
+    parser.add_argument("--log-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/logs",
                         help="Log directory")
-    parser.addio("--device", type=str, help="Device to use (cuda/cpu)")
-    parser.addio("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--device", type=str, help="Device to use (cuda/cpu)")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed")
 
     args = parser.parse_args()
     
