@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-Gene Ontology graph generation pipeline for single-cell perturbation analysis.
+Gene Ontology graph generation pipeline for single-cell pertioio analysis.
 
-This script downloads human GO gene annotations from Gene Ontio Consortium,
+This script downloads human GO gene annotations from Gene Ontology Consortium,
 builds gene adjacency graph based on GO term relationships, applies configurable
 term size and depth filters, caches the graph structure and metadata in data/graphs/,
 and provides utilities for graph loading and validation.
@@ -13,7 +13,7 @@ import sys
 import logging
 import argparse
 import pickle
-import jso
+import json
 import gzip
 from datetime import datetime
 from pathlib import Path
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 
 class GraphGenerationError(Exception):
-    """Custom exceptio for graph generation errors."""
+    """Custom exception for graph generation errors."""
     pass
 
 
@@ -261,14 +261,14 @@ class GeneOntologyGraphBuilder:
 
         annotation_file = self.cache_dir / 'goa_human.gaf.gz'
         if self._should_download(annotation_file, cache_expiry_days, force_refresh):
-            logger.info(f"Dowloading GO annotations from: {annotation_url}")
+            logger.info(f"Downloading GO annotations from: {annotation_url}")
             self._download_file(annotation_url, annotation_file)
         else:
             logger.info(f"Using cached GO annotations: {annotation_file}")
 
         ontology_file = self.cache_dir / 'go-basic.obo'
         if self._should_download(ontology_file, cache_expiry_days, force_refresh):
-            logger.info(f"Dowloading GO ontology from: {ontology_url}")
+            logger.info(f"Downloading GO ontology from: {ontology_url}")
             self._download_file(ontology_url, ontology_file)
         else:
             logger.info(f"Using cached GO ontology: {ontology_file}")
@@ -299,10 +299,10 @@ class GeneOntologyGraphBuilder:
                             f.write(chunk)
                             pbar.update(len(chunk))
 
-            logger.info(f"Dowloaded: {file_path}")
+            logger.info(f"Downloaded: {file_path}")
 
-        except Exceptio as e:
-            raise GraphGenerationError(f"Failed to dowload {url}: {e}")
+        except Exception as e:
+            raise GraphGenerationError(f"Failed to download {url}: {e}")
 
     def parse_go_data(self, annotation_file: Path, ontology_file: Path) -> None:
         self.ontology_parser.parse_obo_file(ontology_file)
@@ -326,7 +326,7 @@ class GeneOntologyGraphBuilder:
         max_term_size = self.filter_config.get('max_term_size', 500)
         min_depth = self.filter_config.get('min_depth', 2)
         max_depth = self.filter_config.get('max_depth', 10)
-        include_namesioes = set(self.filter_config.get('include_namesioes', []))
+        include_namespaces = set(self.filter_config.get('include_namespaces', []))
 
         valid_terms = set()
 
@@ -344,9 +344,9 @@ class GeneOntologyGraphBuilder:
             if depth < min_depth or depth > max_depth:
                 continue
 
-            if include_namesioes:
+            if include_namespaces:
                 namespace = term_info.get('namespace', '')
-                if namespace not in include_namesioes:
+                if namespace not in include_namespaces:
                     continue
 
             if term_info.get('obsolete', False):
@@ -547,10 +547,10 @@ class GeneOntologyGraphBuilder:
                 adjacency_file = output_dir / 'adjacency_matrix.npz'
                 sparse.save_npz(adjacency_file, adjacency_matrix)
 
-                nodes_file = output_dir / 'node_mapping.jso'
+                nodes_file = output_dir / 'node_mapping.json'
                 node_mapping = {i: node for i, node in enumerate(graph.nodes())}
                 with open(nodes_file, 'w') as f:
-                    jso.dump(node_mapping, f, indent=2)
+                    json.dump(nodeio_mapping, f, indent=2)
 
                 logger.info(f"Saved adjacency matrix: {adjacency_file}")
                 logger.info(f"Saved node mapping: {nodes_file}")
@@ -574,9 +574,9 @@ class GeneOntologyGraphBuilder:
             }
         }
 
-        metadata_file = output_dir / 'graph_metadata.jso'
+        metadata_file = output_dir / 'graph_metadata.json'
         with open(metadata_file, 'w') as f:
-            jso.dump(metadata, f, indent=2)
+            json.dump(metadata, f, indent=2)
 
         logger.info(f"Saved metadata: {metadata_file}")
 
@@ -667,8 +667,8 @@ def main():
     output_dir = Path(args.output_dir)
 
     try:
-        configio = load_config(args.config)
-    except Exceptio as e:
+        config = load_config(args.config)
+    except Exception as e:
         logger.error(f"Failed to load configuration: {e}")
         return 1
 
@@ -677,7 +677,7 @@ def main():
     logger.info(f"Cache directory: {args.cache_dir}")
 
     try:
-        builder = GeneOntologyGraphBuilder(configio, args.cache_dir)
+        builder = GeneOntologyGraphBuilder(config, args.cache_dir)
 
         annotation_file, ontology_file = builder.download_go_data(args.force_refresh)
 
@@ -704,7 +704,7 @@ def main():
         logger.info("Gene Ontology graph generation completed successfully")
         return 0
 
-    except Exceptio as e:
+    except Exception as e:
         logger.error(f"Graph generation failed: {e}")
         return 1
 
