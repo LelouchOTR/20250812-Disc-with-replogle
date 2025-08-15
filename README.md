@@ -126,13 +126,7 @@ sbatch scripts/slurm_pipeline.sh
 
 This will execute the entire pipeline on a GPU node.
 
-**Important**: Before submitting the job, you must customize the `scripts/slurm_pipeline.sh` script to fit your cluster's configuration. Specifically, you should review and modify the following:
-- The resource allocation requests (e.g., `--nodes`, `--ntasks-per-node`, `--gpus-per-task`, `--mem`, `--time`).
-- The output and error log paths (`--output` and `--error`).
-- The conda environment activation line to match the name of your environment.
-- Any other paths inside the script to match your environment.
-
-You should also ensure that the paths in `configs/pipeline_config.yaml` are set correctly for the HPC environment.
+Before submitting the job, you must customize the `scripts/slurm_pipeline.sh` script to fit your cluster's configuration.
 
 ---
 
