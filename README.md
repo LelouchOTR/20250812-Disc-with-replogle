@@ -38,7 +38,11 @@ conda env create -f environment.yml
 conda activate disc-with-replogle
 ```
 
-### 3. Run the Pipeline
+### 3. Configure Output Paths
+
+Before running the pipeline, configure the output paths in `configs/pipeline_config.yaml`. By default, all outputs are saved to the `outputs/` directory. You can change these paths to a location of your choice.
+
+### 4. Run the Pipeline
 
 The easiest way to run the entire pipeline is to use the `run_pipeline.py` script. This will execute all the steps from data ingestion to evaluation.
 
