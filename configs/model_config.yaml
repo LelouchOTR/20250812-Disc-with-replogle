@@ -60,6 +60,7 @@ loss_weights:
   reconstruction_weight: 1.0             # Weight for reconstruction loss
   kl_divergence_weight: 1.0              # Weight for KL divergence loss
   discrepancy_weight: 0.5                # Weight for discrepancy loss between control/perturbed
+  graph_reg_weight: 0.1                  # Weight for graph Laplacian regularization
   
   # Additional regularization losses
   l1_regularization_weight: 0.0          # L1 regularization on latent space

@@ -142,43 +142,84 @@ class ModelTrainer:
 
         self.input_dim = adata_train.n_vars
 
+        self.adata_train = adata_train
+        self.adata_val = adata_val
+
         logger.info(f"Created data loaders - Train batches: {len(self.train_loader)}, "
                     f"Val batches: {len(self.val_loader)}")
 
-    def load_graph(self, graph_dir: Optional[Path] = None) -> Optional[torch.Tensor]:
+    def load_graph(self, graph_dir: Optional[Path] = None) -> None:
         if graph_dir is None:
             logger.info("No graph directory specified, skipping graph loading")
-            return None
+            self.adjacency_matrix = None
+            self.node_mapping = None
+            return
 
         graph_dir = Path(graph_dir)
-
         adj_file = graph_dir / 'adjacency_matrix.npz'
         nodes_file = graph_dir / 'node_mapping.json'
 
         if adj_file.exists() and nodes_file.exists():
             logger.info("Loading gene adjacency graph...")
-
             from scipy import sparse
             adj_matrix = sparse.load_npz(adj_file)
-
             with open(nodes_file, 'r') as f:
                 node_mapping = json.load(f)
 
-            adj_tensor = torch.from_numpy(adj_matrix.toarray()).float()
-
-            logger.info(f"Loaded adjacency matrix: {adj_tensor.shape}")
-            return adj_tensor.to(self.device)
-
+            self.adjacency_matrix = torch.from_numpy(adj_matrix.toarray()).float().to(self.device)
+            self.node_mapping = node_mapping
+            logger.info(f"Loaded adjacency matrix: {self.adjacency_matrix.shape}")
         else:
             logger.warning(f"Graph files not found in {graph_dir}, proceeding without graph")
-            return None
+            self.adjacency_matrix = None
+            self.node_mapping = None
+
+    def _harmonize_genes(self):
+        if self.adjacency_matrix is None or self.node_mapping is None:
+            logger.info("No graph specified, skipping gene harmonization.")
+            return
+
+        logger.info("Harmonizing genes between expression data and graph...")
+
+        graph_genes = list(self.node_mapping.values())
+        data_genes = self.adata_train.var_names.tolist()
+
+        common_genes = sorted(list(set(graph_genes) & set(data_genes)))
+        
+        if not common_genes:
+            raise TrainingError("No common genes found between expression data and graph.")
+
+        logger.info(f"Found {len(common_genes)} common genes.")
+
+        # Filter AnnData objects
+        self.adata_train = self.adata_train[:, common_genes].copy()
+        self.adata_val = self.adata_val[:, common_genes].copy()
+        self.input_dim = len(common_genes)
+
+        # Filter adjacency matrix
+        graph_gene_to_idx = {gene: i for i, gene in enumerate(graph_genes)}
+        common_gene_indices = [graph_gene_to_idx[gene] for gene in common_genes]
+        
+        self.adjacency_matrix = self.adjacency_matrix[common_gene_indices, :][:, common_gene_indices]
+
+        # Re-create data loaders with filtered data
+        num_workers = int(self.training_params.get('num_workers', 4))
+        self.train_loader, self.val_loader = create_data_loaders(
+            self.adata_train, self.adata_val,
+            batch_size=self.batch_size,
+            num_workers=num_workers
+        )
+
+        logger.info(f"Re-created data loaders with {self.input_dim} harmonized genes.")
+        logger.info(f"Final adjacency matrix shape: {self.adjacency_matrix.shape}")
 
     def initialize_model(self) -> None:
         logger.info("Initializing DiscrepancyVAE model...")
 
         self.model = DiscrepancyVAE(
             input_dim=self.input_dim,
-            config=self.model_config
+            config=self.model_config,
+            adjacency_matrix=self.adjacency_matrix
         )
 
         self.model.to(self.device)
@@ -287,7 +328,8 @@ class ModelTrainer:
                 'L': f"{total_loss.item():.0f}",
                 'RL': f"{loss_dict['reconstruction_loss'].item():.0f}",
                 'KL': f"{loss_dict['kl_loss'].item():.0f}",
-                'DL': f"{loss_dict['discrepancy_loss'].item():.0f}"
+                'DL': f"{loss_dict['discrepancy_loss'].item():.0f}",
+                'GL': f"{loss_dict['graph_reg_loss'].item():.2f}"
             })
 
         pbar.close()
@@ -376,44 +418,20 @@ class ModelTrainer:
     def plot_training_curves(self) -> None:
         logger.info("Plotting training curves...")
 
-        fig, axes = plt.subplots(2, 2, figsize=(15, 10))
+        num_plots = len(self.train_history.keys())
+        fig, axes = plt.subplots(num_plots, 1, figsize=(10, 5 * num_plots))
         fig.suptitle('Training Progress', fontsize=16)
 
-        axes[0, 0].plot(self.train_history['total_loss'], label='Train', alpha=0.8)
-        if self.val_history['total_loss']:
-            axes[0, 0].plot(self.val_epochs, self.val_history['total_loss'], label='Validation', alpha=0.8, marker='o')
-        axes[0, 0].set_title('Total Loss')
-        axes[0, 0].set_xlabel('Epoch')
-        axes[0, 0].set_ylabel('Loss')
-        axes[0, 0].legend()
-        axes[0, 0].grid(True, alpha=0.3)
-
-        axes[0, 1].plot(self.train_history['reconstruction_loss'], label='Train', alpha=0.8)
-        if self.val_history['reconstruction_loss']:
-            axes[0, 1].plot(self.val_epochs, self.val_history['reconstruction_loss'], label='Validation', alpha=0.8, marker='o')
-        axes[0, 1].set_title('Reconstruction Loss')
-        axes[0, 1].set_xlabel('Epoch')
-        axes[0, 1].set_ylabel('Loss')
-        axes[0, 1].legend()
-        axes[0, 1].grid(True, alpha=0.3)
-
-        axes[1, 0].plot(self.train_history['kl_loss'], label='Train', alpha=0.8)
-        if self.val_history['kl_loss']:
-            axes[1, 0].plot(self.val_epochs, self.val_history['kl_loss'], label='Validation', alpha=0.8, marker='o')
-        axes[1, 0].set_title('KL Divergence Loss')
-        axes[1, 0].set_xlabel('Epoch')
-        axes[1, 0].set_ylabel('Loss')
-        axes[1, 0].legend()
-        axes[1, 0].grid(True, alpha=0.3)
-
-        axes[1, 1].plot(self.train_history['discrepancy_loss'], label='Train', alpha=0.8)
-        if self.val_history['discrepancy_loss']:
-            axes[1, 1].plot(self.val_epochs, self.val_history['discrepancy_loss'], label='Validation', alpha=0.8, marker='o')
-        axes[1, 1].set_title('Discrepancy Loss')
-        axes[1, 1].set_xlabel('Epoch')
-        axes[1, 1].set_ylabel('Loss')
-        axes[1, 1].legend()
-        axes[1, 1].grid(True, alpha=0.3)
+        for i, (key, values) in enumerate(self.train_history.items()):
+            ax = axes[i]
+            ax.plot(values, label='Train', alpha=0.8)
+            if self.val_history[key]:
+                ax.plot(self.val_epochs, self.val_history[key], label='Validation', alpha=0.8, marker='o')
+            ax.set_title(key.replace('_', ' ').title())
+            ax.set_xlabel('Epoch')
+            ax.set_ylabel('Loss')
+            ax.legend()
+            ax.grid(True, alpha=0.3)
 
         plt.tight_layout()
 
@@ -610,7 +628,9 @@ def main():
         trainer.load_data(args.data_dir)
 
         if args.graph_dir:
-            trainer.adjacency_matrix = trainer.load_graph(args.graph_dir)
+            trainer.load_graph(args.graph_dir)
+        
+        trainer._harmonize_genes()
 
         trainer.initialize_model()
 

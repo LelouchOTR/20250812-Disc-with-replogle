@@ -24,6 +24,7 @@ from torch.utils.data import Dataset, DataLoader
 import pandas as pd
 from scipy import sparse
 import anndata as ad
+from torch_geometric.nn import GCNConv
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -35,36 +36,34 @@ class DiscrepancyVAEError(Exception):
     pass
 
 
-class Encoder(nn.Module):
+class GraphEncoder(nn.Module):
     """
-    Encoder network for DiscrepancyVAE.
+    Graph Convolutional Encoder network for DiscrepancyVAE.
     
-    Maps gene expression data to latent space parameters (mean and log variance).
+    Maps gene expression data to latent space parameters (mean and log variance)
+    using graph convolutions.
     """
     
     def __init__(self, input_dim: int, hidden_dims: List[int], latent_dim: int,
                  dropout_rate: float = 0.1, batch_norm: bool = True,
                  activation: str = 'relu'):
         """
-        Initialize encoder network.
+        Initialize graph encoder network.
         
         Args:
             input_dim: Input dimension (number of genes)
-            hidden_dims: List of hidden layer dimensions
+            hidden_dims: List of hidden layer dimensions for GCN
             latent_dim: Latent space dimension
             dropout_rate: Dropout rate for regularization
             batch_norm: Whether to use batch normalization
             activation: Activation function ('relu', 'elu', 'leaky_relu')
         """
-        super(Encoder, self).__init__()
+        super(GraphEncoder, self).__init__()
         
         self.input_dim = input_dim
         self.hidden_dims = hidden_dims
         self.latent_dim = latent_dim
-        self.dropout_rate = dropout_rate
-        self.batch_norm = batch_norm
         
-        # Choose activation function
         if activation == 'relu':
             self.activation = nn.ReLU()
         elif activation == 'elu':
@@ -73,27 +72,13 @@ class Encoder(nn.Module):
             self.activation = nn.LeakyReLU(0.2)
         else:
             raise ValueError(f"Unsupported activation: {activation}")
+
+        self.conv1 = GCNConv(1, hidden_dims[0])
+        self.conv2 = GCNConv(hidden_dims[0], hidden_dims[1])
         
-        # Build encoder layers
-        layers = []
-        prev_dim = input_dim
+        self.mu_layer = nn.Linear(hidden_dims[1] * input_dim, latent_dim)
+        self.logvar_layer = nn.Linear(hidden_dims[1] * input_dim, latent_dim)
         
-        for hidden_dim in hidden_dims:
-            layers.append(nn.Linear(prev_dim, hidden_dim))
-            if batch_norm:
-                layers.append(nn.BatchNorm1d(hidden_dim))
-            layers.append(self.activation)
-            if dropout_rate > 0:
-                layers.append(nn.Dropout(dropout_rate))
-            prev_dim = hidden_dim
-        
-        self.encoder_layers = nn.Sequential(*layers)
-        
-        # Latent space parameters
-        self.mu_layer = nn.Linear(prev_dim, latent_dim)
-        self.logvar_layer = nn.Linear(prev_dim, latent_dim)
-        
-        # Initialize weights
         self._initialize_weights()
     
     def _initialize_weights(self):
@@ -103,22 +88,48 @@ class Encoder(nn.Module):
                 nn.init.xavier_uniform_(module.weight)
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
-    
-    def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+
+    def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """
-        Forward pass through encoder.
+        Forward pass through graph encoder.
         
         Args:
             x: Input tensor [batch_size, input_dim]
+            edge_index: Edge index tensor for graph [2, num_edges]
             
         Returns:
             Tuple of (mu, logvar) tensors [batch_size, latent_dim]
         """
-        h = self.encoder_layers(x)
-        mu = self.mu_layer(h)
-        logvar = self.logvar_layer(h)
+        # x is [batch_size, num_genes]
+        # GCNConv expects [num_nodes, num_features]
+        # We treat each cell as a separate graph problem.
+        # Node features are the expression values for that cell.
         
-        return mu, logvar
+        batch_size = x.shape[0]
+        num_genes = x.shape[1]
+
+        # Reshape x to be [batch_size, num_genes, 1] to represent node features
+        x_reshaped = x.unsqueeze(-1)
+
+        # Process each item in the batch
+        outputs = []
+        for i in range(batch_size):
+            h = self.conv1(x_reshaped[i], edge_index)
+            h = self.activation(h)
+            h = self.conv2(h, edge_index)
+            h = self.activation(h)
+            outputs.append(h)
+
+        # Concatenate batch results
+        h_batch = torch.stack(outputs)
+
+        # Flatten the output for the linear layers
+        h_flat = h_batch.view(batch_size, -1)
+        
+        mu = self.mu_layer(h_flat)
+        logvar = self.logvar_layer(h_flat)
+        
+        return mu, logvar, h_batch
 
 
 class Decoder(nn.Module):
@@ -225,23 +236,25 @@ class DiscrepancyVAE(nn.Module):
     and can compute discrepancies between control and perturbed conditions.
     """
     
-    def __init__(self, input_dim: int, config: Dict[str, Any]):
+    def __init__(self, input_dim: int, config: Dict[str, Any], adjacency_matrix: Optional[torch.Tensor] = None):
         """
         Initialize DiscrepancyVAE model.
         
         Args:
             input_dim: Input dimension (number of genes)
             config: Model configuration dictionary
+            adjacency_matrix: Optional adjacency matrix for graph-based regularization
         """
         super(DiscrepancyVAE, self).__init__()
         
         self.input_dim = input_dim
         self.config = config
+        self.adjacency_matrix = adjacency_matrix
         
         # Extract model parameters
         model_params = config.get('model_params', {})
         self.latent_dim = model_params.get('latent_dim', 32)
-        self.hidden_dims = model_params.get('hidden_dims', [512, 256, 128])
+        self.hidden_dims = model_params.get('hidden_dims', [512, 256])
         self.dropout_rate = model_params.get('dropout_rate', 0.1)
         self.batch_norm = model_params.get('batch_norm', True)
         self.activation = model_params.get('activation', 'relu')
@@ -252,9 +265,10 @@ class DiscrepancyVAE(nn.Module):
         self.beta = loss_params.get('beta', 1.0)  # KL divergence weight
         self.discrepancy_weight = loss_params.get('discrepancy_weight', 1.0)
         self.reconstruction_loss_type = loss_params.get('reconstruction_loss', 'mse')
-        
+        self.graph_reg_weight = loss_params.get('graph_reg_weight', 0.1)
+
         # Build encoder and decoder
-        self.encoder = Encoder(
+        self.encoder = GraphEncoder(
             input_dim=input_dim,
             hidden_dims=self.hidden_dims,
             latent_dim=self.latent_dim,
@@ -275,6 +289,14 @@ class DiscrepancyVAE(nn.Module):
             output_activation=self.output_activation
         )
         
+        if self.adjacency_matrix is not None:
+            self.edge_index = self.adjacency_matrix.to_sparse()._indices()
+        else:
+            # If no graph, create a fully connected graph as a placeholder
+            logger.warning("Adjacency matrix not provided. Using a fully connected graph for GCN.")
+            adj = torch.ones(input_dim, input_dim)
+            self.edge_index = adj.to_sparse()._indices()
+
         logger.info(f"Initialized DiscrepancyVAE with {self._count_parameters()} parameters")
     
     def _count_parameters(self) -> int:
@@ -291,8 +313,9 @@ class DiscrepancyVAE(nn.Module):
         Returns:
             Tuple of (mu, logvar) tensors
         """
-        return self.encoder(x)
-    
+        mu, logvar, h_batch = self.encoder(x, self.edge_index)
+        return mu, logvar, h_batch
+
     def reparameterize(self, mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
         """
         Reparameterization trick for sampling from latent distribution.
@@ -334,7 +357,7 @@ class DiscrepancyVAE(nn.Module):
             Dictionary containing model outputs
         """
         # Encode
-        mu, logvar = self.encode(x)
+        mu, logvar, gene_embeddings = self.encode(x)
         
         # Sample from latent distribution
         z = self.reparameterize(mu, logvar)
@@ -346,7 +369,8 @@ class DiscrepancyVAE(nn.Module):
             'x_recon': x_recon,
             'mu': mu,
             'logvar': logvar,
-            'z': z
+            'z': z,
+            'gene_embeddings': gene_embeddings
         }
     
     def compute_reconstruction_loss(self, x: torch.Tensor, x_recon: torch.Tensor) -> torch.Tensor:
@@ -384,7 +408,46 @@ class DiscrepancyVAE(nn.Module):
         # KL divergence between q(z|x) and p(z) = N(0, I)
         kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
         return kl_loss
-    
+
+    def compute_graph_laplacian_regularization(self, z_genes: torch.Tensor) -> torch.Tensor:
+        """
+        Computes the graph Laplacian regularization loss for a batch.
+        This loss encourages connected nodes in the graph to have similar latent representations.
+        z_genes shape: [batch_size, num_nodes, num_features]
+        """
+        if self.adjacency_matrix is None:
+            return torch.tensor(0.0, device=z_genes.device)
+
+        # Graph Laplacian L = D - A
+        D = torch.diag(torch.sum(self.adjacency_matrix, 1))
+        L = D - self.adjacency_matrix
+
+        # z_genes has shape [batch_size, num_nodes, num_features]
+        # We want to compute trace(Z_i^T * L * Z_i) for each item i in the batch
+        
+        # Use torch.bmm for batched matrix multiplication.
+        # L needs to be expanded to the batch size.
+        batch_size = z_genes.shape[0]
+        L_batch = L.unsqueeze(0).expand(batch_size, -1, -1)
+        
+        # z_genes.transpose(1, 2) gives [batch_size, num_features, num_nodes]
+        z_t = z_genes.transpose(1, 2)
+        
+        # First matmul: z_t @ L_batch -> [b, f, n] @ [b, n, n] = [b, f, n]
+        term1 = torch.bmm(z_t, L_batch)
+        
+        # Second matmul: term1 @ z_genes -> [b, f, n] @ [b, n, f] = [b, f, f]
+        quadratic_form = torch.bmm(term1, z_genes)
+        
+        # The trace is the sum of the diagonal elements.
+        # We want the trace for each item in the batch, then sum them up.
+        graph_reg = torch.sum(torch.diagonal(quadratic_form, dim1=-2, dim2=-1))
+        
+        # Normalize by batch size
+        graph_reg = graph_reg / batch_size
+        
+        return graph_reg
+
     def compute_discrepancy_loss(self, control_z: torch.Tensor, perturbed_z: torch.Tensor,
                                perturbation_labels: torch.Tensor) -> torch.Tensor:
         """
@@ -438,6 +501,7 @@ class DiscrepancyVAE(nn.Module):
         mu = model_output['mu']
         logvar = model_output['logvar']
         z = model_output['z']
+        gene_embeddings = model_output['gene_embeddings']
         
         # Reconstruction loss
         recon_loss = self.compute_reconstruction_loss(x, x_recon)
@@ -445,6 +509,9 @@ class DiscrepancyVAE(nn.Module):
         # KL divergence loss
         kl_loss = self.compute_kl_loss(mu, logvar)
         
+        # Graph Laplacian Regularization
+        graph_reg_loss = self.compute_graph_laplacian_regularization(gene_embeddings)
+
         # Discrepancy loss
         discrepancy_loss = torch.tensor(0.0, device=x.device)
         if perturbation_labels is not None:
@@ -461,13 +528,19 @@ class DiscrepancyVAE(nn.Module):
                 )
         
         # Total loss
-        total_loss = recon_loss + self.beta * kl_loss + self.discrepancy_weight * discrepancy_loss
+        total_loss = (
+                      recon_loss +
+                      self.beta * kl_loss +
+                      self.discrepancy_weight * discrepancy_loss +
+                      self.graph_reg_weight * graph_reg_loss
+                     )
         
         return {
             'total_loss': total_loss,
             'reconstruction_loss': recon_loss,
             'kl_loss': kl_loss,
-            'discrepancy_loss': discrepancy_loss
+            'discrepancy_loss': discrepancy_loss,
+            'graph_reg_loss': graph_reg_loss
         }
     
     def get_latent_representation(self, x: torch.Tensor) -> torch.Tensor:
@@ -755,7 +828,7 @@ if __name__ == "__main__":
     config = {
         'model_params': {
             'latent_dim': 32,
-            'hidden_dims': [512, 256, 128],
+            'hidden_dims': [512, 256],
             'dropout_rate': 0.1,
             'batch_norm': True,
             'activation': 'relu',
@@ -764,13 +837,15 @@ if __name__ == "__main__":
         'loss_params': {
             'beta': 1.0,
             'discrepancy_weight': 1.0,
-            'reconstruction_loss': 'mse'
+            'reconstruction_loss': 'mse',
+            'graph_reg_weight': 0.1
         }
     }
     
     # Create model
     input_dim = 2000  # Example: 2000 genes
-    model = DiscrepancyVAE(input_dim=input_dim, config=config)
+    adj = torch.ones(input_dim, input_dim) # Dummy adjacency matrix
+    model = DiscrepancyVAE(input_dim=input_dim, config=config, adjacency_matrix=adj)
     
     # Print model summary
     print(get_model_summary(model))
