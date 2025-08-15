@@ -71,7 +71,16 @@ class EnsemblGeneMapper:
         self.ensembl_rest_url = "https://rest.ensembl.org"
         
         logger.info(f"Initialized EnsemblGeneMapper for {species} with cache dir: {self.cache_dir}")
-    
+        
+    def _find_repo_cache(self) -> Path:
+        """Try to locate repository cache directory using file structure."""
+        current_dir = Path(__file__).parent
+        while current_dir.parent != current_dir:
+            if (current_dir / 'src').exists():
+                return current_dir / 'data' / 'cache'
+            current_dir = current_dir.parent
+        raise GeneIDError("Could not find project root directory")
+
     def _download_ensembl_mapping(self, force_refresh: bool = False) -> pd.DataFrame:
         """
         Download gene mapping data from Ensembl BioMart.
