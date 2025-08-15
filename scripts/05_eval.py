@@ -50,7 +50,7 @@ class ModelEvaluator:
         self.output_dir = Path(output_dir)
         self.log_dir = Path(log_dir)
         self.device = device
-        self.plots_dir = self.log_dir / "plots"
+        self.plots_dir = self.output_dir / "plots"
         self.plots_dir.mkdir(parents=True, exist_ok=True)
 
         self.model = None
