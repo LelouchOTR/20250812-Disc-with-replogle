@@ -5,6 +5,7 @@ Handles gene ID conversion, validation, and standardization to Ensembl namespace
 
 import re
 import logging
+import os
 from typing import Dict, List, Set, Optional, Union, Tuple
 from pathlib import Path
 import requests
@@ -38,20 +39,27 @@ class EnsemblGeneMapper:
         if self.species != "human":
             raise GeneIDError(f"Species '{species}' not supported. Only 'human' is currently supported.")
         
+        # Resolve cache directory
         if cache_dir is None:
-            # Find project root and set cache directory
-            current_dir = Path(__file__).parent
-            while current_dir.parent != current_dir:
-                if (current_dir / 'src').exists():
-                    self.cache_dir = current_dir / 'data' / 'cache'
-                    break
-                current_dir = current_dir.parent
+            # 1. Check environment variable
+            env_cache = os.getenv("ENSEMBL_MAPPER_CACHE")
+            if env_cache:
+                cache_dir = Path(env_cache)
+            # 2. Use XDG compliant fallback if repo structure not found
             else:
-                raise GeneIDError("Could not find project root directory")
+                try:
+                    repo_cache = self._find_repo_cache()
+                    if repo_cache.exists():
+                        cache_dir = repo_cache
+                    else:
+                        cache_dir = Path.home() / ".cache" / "discrepancy_vae"
+                except (RuntimeError, GeneIDError):  # If $HOME undefined or repo not found
+                    cache_dir = Path.cwd() / ".discrepancy_vae_cache"
         else:
-            self.cache_dir = Path(cache_dir)
+            cache_dir = Path(cache_dir)
         
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_dir = cache_dir
         
         # Mapping tables
         self._symbol_to_ensembl: Optional[Dict[str, str]] = None
