@@ -84,21 +84,40 @@ You can also run multiple steps in a sequence:
 python run_pipeline.py ingest process train
 ```
 
-## 📁 Project Structure
+## 📁 Output Directory Structure
 
-The repository is organized as follows:
+When you run the pipeline, it creates a structured output directory with the following organization:
 
 ```
-.
-├── configs/              # Configuration files for the pipeline
-├── data/                 # Raw and processed data
-├── notebooks/            # Jupyter notebooks for exploration
-├── outputs/              # Output files (models, figures, logs)
-├── scripts/              # Python and shell scripts for the pipeline
-├── src/                  # Source code for the model and utilities
-├── environment.yml       # Conda environment definition
-├── run_pipeline.py       # Main pipeline script
-└── README.md             # This file
+run_root/
+├── run_metadata.json              # Run metadata (timestamp, config, seed)
+├── raw/                           # Raw input data
+│   └── ... (downloaded datasets)
+├── processed/                     # Processed data
+│   ├── processed_data.h5ad        # Full processed dataset
+│   ├── train_data.h5ad            # Training subset
+│   ├── val_data.h5ad              # Validation subset
+│   ├── test_data.h5ad             # Test subset
+│   └── processing_metadata.json   # Processing metadata
+├── graphs/                        # Gene interaction graphs
+│   ├── gene_adjacency_graph.graphml
+│   ├── gene_adjacency_graph.pkl
+│   ├── adjacency_matrix.npz
+│   ├── node_mapping.json
+│   └── graph_metadata.json
+├── models/                        # Trained models
+│   ├── best_model.pth
+│   ├── latest_model.pth
+│   └── checkpoint_epoch_XXX.pth
+├── evaluation/                    # Evaluation results
+│   ├── evaluation_report.md
+│   └── plots/
+│       ├── umap_enhanced.png
+│       ├── reconstruction_quality.png
+│       └── perturbation_effects.png
+├── logs/                          # Log files
+│   └── ... (pipeline logs from each step)
+└── cache/                         # Cached data (GO terms etc.)
 ```
 
 ## ⚙️ Configuration
