@@ -1,0 +1,193 @@
+# Gene Ontology graph configuration for single-cell perturbation analysis pipeline
+# Configuration for GO term filtering, graph construction, and adjacency parameters
+
+# Gene Ontology data source configuration
+go_data_source:
+  # GO annotation source
+  annotation_url: "http://current.geneontology.org/annotations/goa_human.gaf.gz"
+  ontology_url: "http://current.geneontology.org/ontology/go-basic.obo"
+  
+  # Local cache settings
+  cache_dir: "${DATA_DIR:data}/cache/go"  # Directory to cache GO files
+  cache_expiry_days: 30                   # Days before refreshing cached files
+  
+  # Species configuration
+  species: "human"                        # Species for GO annotations
+  taxon_id: 9606                         # NCBI taxonomy ID for human
+
+# GO term filtering parameters
+go_filtering:
+  # Term size constraints
+  min_term_size: 5                       # Minimum number of genes per GO term
+  max_term_size: 500                     # Maximum number of genes per GO term
+  
+  # Ontology depth constraints
+  min_depth: 2                           # Minimum depth in GO hierarchy
+  max_depth: 10                          # Maximum depth in GO hierarchy
+  
+  # Evidence code filtering
+  evidence_codes:                        # Allowed evidence codes for annotations
+    - "EXP"    # Inferred from Experiment
+    - "IDA"    # Inferred from Direct Assay
+    - "IPI"    # Inferred from Physical Interaction
+    - "IMP"    # Inferred from Mutant Phenotype
+    - "IGI"    # Inferred from Genetic Interaction
+    - "IEP"    # Inferred from Expression Pattern
+    - "HTP"    # Inferred from High Throughput Experiment
+    - "HDA"    # Inferred from High Throughput Direct Assay
+    - "HMP"    # Inferred from High Throughput Mutant Phenotype
+    - "HGI"    # Inferred from High Throughput Genetic Interaction
+    - "HEP"    # Inferred from High Throughput Expression Pattern
+    - "TAS"    # Traceable Author Statement
+    - "IC"     # Inferred by Curator
+  
+  # Exclude certain evidence codes (computational predictions)
+  exclude_evidence_codes:
+    - "IEA"    # Inferred from Electronic Annotation
+    - "ND"     # No biological Data available
+    - "NAS"    # Non-traceable Author Statement
+  
+  # GO namespace filtering
+  include_namespaces:                    # GO namespaces to include
+    - "biological_process"
+    - "molecular_function"
+    - "cellular_component"
+  
+  # Term relationship filtering
+  include_relationships:                 # GO relationships to include
+    - "is_a"
+    - "part_of"
+    - "regulates"
+    - "positively_regulates"
+    - "negatively_regulates"
+
+# Gene adjacency graph construction
+adjacency:
+  # Graph construction method
+  method: "jaccard"                      # Options: "jaccard", "overlap", "cosine", "binary"
+  
+  # Similarity threshold for edge creation
+  threshold: 0.1                         # Minimum similarity for creating edges
+  
+  # Graph sparsity control
+  max_edges_per_gene: 100               # Maximum number of edges per gene
+  min_edge_weight: 0.01                 # Minimum edge weight to retain
+  
+  # Normalization options
+  normalize_weights: true                # Whether to normalize edge weights
+  normalization_method: "max"           # Normalization: "max", "sum", "zscore"
+  
+  # Graph filtering
+  remove_isolated_nodes: true           # Remove genes with no connections
+  min_degree: 1                         # Minimum degree for gene inclusion
+  
+  # Advanced graph construction
+  use_term_weights: false               # Whether to weight terms by information content
+  information_content_method: "resnik"  # IC method: "resnik", "lin", "jiang"
+
+# Graph processing and analysis
+graph_processing:
+  # Community detection
+  detect_communities: true              # Whether to detect gene communities
+  community_method: "louvain"           # Method: "louvain", "leiden", "infomap"
+  community_resolution: 1.0             # Resolution parameter for community detection
+  
+  # Graph metrics computation
+  compute_centrality: true              # Whether to compute centrality metrics
+  centrality_metrics:                   # Centrality metrics to compute
+    - "degree"
+    - "betweenness"
+    - "closeness"
+    - "eigenvector"
+  
+  # Graph embedding (optional)
+  compute_embedding: false              # Whether to compute graph embeddings
+  embedding_method: "node2vec"          # Method: "node2vec", "deepwalk", "line"
+  embedding_dimensions: 128             # Dimensionality of embeddings
+  
+  # Subgraph extraction
+  extract_subgraphs: false              # Whether to extract pathway-specific subgraphs
+  subgraph_methods:                     # Methods for subgraph extraction
+    - "pathway_based"
+    - "community_based"
+
+# Graph validation and quality control
+validation:
+  # Basic graph statistics
+  compute_basic_stats: true             # Whether to compute basic graph statistics
+  
+  # Quality metrics
+  check_connectivity: true              # Check graph connectivity
+  min_connected_component_size: 10      # Minimum size of connected components to retain
+  
+  # Biological validation
+  validate_known_pathways: true         # Validate against known pathway databases
+  pathway_databases:                    # Databases for pathway validation
+    - "KEGG"
+    - "Reactome"
+    - "WikiPathways"
+  
+  # Statistical validation
+  compute_enrichment: true              # Compute GO term enrichment in communities
+  enrichment_method: "hypergeometric"   # Enrichment test method
+  enrichment_correction: "fdr_bh"       # Multiple testing correction
+
+# Output configuration
+output:
+  # Graph file formats
+  save_formats:                         # Formats to save the graph
+    - "graphml"     # GraphML format (preserves attributes)
+    - "gml"         # GML format
+    - "pickle"      # Python pickle format (fastest loading)
+    - "adjacency"   # Adjacency matrix format
+  
+  # Metadata saving
+  save_metadata: true                   # Whether to save graph metadata
+  metadata_format: "json"               # Metadata format: "json", "yaml"
+  
+  # Visualization exports
+  export_visualizations: true           # Whether to export graph visualizations
+  visualization_formats:                # Visualization formats
+    - "png"
+    - "pdf"
+    - "svg"
+  
+  # Summary reports
+  generate_report: true                 # Whether to generate summary report
+  report_format: "html"                 # Report format: "html", "markdown"
+
+# Performance and memory optimization
+performance:
+  # Memory management
+  chunk_size: 1000                      # Chunk size for processing large gene sets
+  use_sparse_matrices: true             # Whether to use sparse matrices
+  
+  # Parallel processing
+  n_jobs: -1                           # Number of parallel jobs (-1 for all cores)
+  parallel_backend: "threading"         # Backend: "threading", "multiprocessing"
+  
+  # Caching
+  cache_intermediate_results: true      # Whether to cache intermediate results
+  cache_similarity_matrices: true      # Whether to cache similarity matrices
+
+# Advanced options
+advanced:
+  # Custom GO term sets
+  use_custom_term_sets: false          # Whether to use custom GO term sets
+  custom_term_files: []                # Paths to custom term set files
+  
+  # Gene filtering
+  gene_filter_file: null               # Optional file with genes to include/exclude
+  gene_filter_mode: "include"          # Filter mode: "include", "exclude"
+  
+  # Experimental features
+  use_semantic_similarity: false       # Whether to use semantic similarity between terms
+  semantic_similarity_method: "resnik" # Semantic similarity method
+  
+  # Integration with other databases
+  integrate_string_db: false           # Whether to integrate STRING database
+  string_confidence_threshold: 0.4     # Confidence threshold for STRING interactions
+  
+  # Temporal analysis (if applicable)
+  temporal_analysis: false             # Whether to perform temporal GO analysis
+  time_points: []                      # Time points for temporal analysis
