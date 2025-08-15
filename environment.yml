@@ -27,6 +27,7 @@ dependencies:
 
   # Graph analysis
   - networkx>=3.0
+  - torch-geometric
 
   # Configuration and utilities
   - pyyaml>=6.0
