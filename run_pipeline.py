@@ -232,7 +232,8 @@ def run_train(config: dict, run_dirs: dict, seed: int):
         "--data-dir", data_dir,
         "--output-dir", model_dir,
         "--config", "model_config",
-        "--seed", str(seed)
+        "--seed", str(seed),
+        "--device", "cuda"
     ]
     if os.path.exists(graph_dir):
         cmd.extend(["--graph-dir", graph_dir])
@@ -255,7 +256,8 @@ def run_evaluate(config: dict, run_dirs: dict, seed: int):
         "--data-path", data_path,
         "--output-dir", output_dir,
         "--config", "pipeline_config",
-        "--seed", str(seed)
+        "--seed", str(seed),
+        "--device", "cuda"
     ]
     run_step(cmd)
     logger.info(f"--- Evaluation Step Complete (output: {output_dir}) ---")
