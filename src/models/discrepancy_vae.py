@@ -103,10 +103,6 @@ class GraphEncoder(nn.Module):
         """
         batch_size, num_genes = x.shape
 
-        logger.info(f"GraphEncoder forward: batch_size={batch_size}, num_genes={num_genes}, edge_index shape: {edge_index.shape}")
-        if torch.cuda.is_available() and x.is_cuda:
-            logger.info(f"Initial GPU memory: {torch.cuda.memory_allocated(x.device)/1024**2:.2f} MB allocated, {torch.cuda.memory_reserved(x.device)/1024**2:.2f} MB reserved")
-
         # Process each sample in the batch individually to avoid large tensors
         batch_mu = []
         batch_logvar = []
@@ -132,18 +128,11 @@ class GraphEncoder(nn.Module):
             batch_mu.append(mu)
             batch_logvar.append(logvar)
             batch_gene_embeddings.append(gene_embeddings)
-            
-            if i == 0 and torch.cuda.is_available() and x.is_cuda:
-                logger.info(f"After first sample, GPU memory: {torch.cuda.memory_allocated(x.device)/1024**2:.2f} MB allocated, {torch.cuda.memory_reserved(x.device)/1024**2:.2f} MB reserved")
-
 
         # Stack results into tensors
-        logger.info("Stacking results...")
         mu = torch.stack(batch_mu)
         logvar = torch.stack(batch_logvar)
         gene_embeddings_reshaped = torch.stack(batch_gene_embeddings)
-        if torch.cuda.is_available() and x.is_cuda:
-            logger.info(f"After stacking, GPU memory: {torch.cuda.memory_allocated(x.device)/1024**2:.2f} MB allocated, {torch.cuda.memory_reserved(x.device)/1024**2:.2f} MB reserved")
 
         return mu, logvar, gene_embeddings_reshaped
 
@@ -440,24 +429,28 @@ class DiscrepancyVAE(nn.Module):
 
         edge_index = self.edge_index
         src_nodes, dst_nodes = edge_index[0], edge_index[1]
+        num_edges = edge_index.shape[1]
 
-        # z_genes has shape [batch_size, num_nodes, num_features]
-        # We want to compute the loss for each item in the batch and then sum.
-
-        # Get the embeddings for the source and destination nodes of each edge
-        # The result will have shape [batch_size, num_edges, num_features]
-        z_src = z_genes[:, src_nodes, :]
-        z_dst = z_genes[:, dst_nodes, :]
-
-        # Compute the squared L2 norm of the difference for each edge, for each item in the batch
-        dist_sq = torch.sum((z_src - z_dst)**2, dim=2) # shape [batch_size, num_edges]
-
-        # Sum over all edges and then over the batch
-        graph_reg = torch.sum(dist_sq)
-        
-        # Normalize by batch size
         batch_size = z_genes.shape[0]
-        graph_reg = graph_reg / batch_size
+        total_graph_reg = 0.0
+        
+        edge_chunk_size = 100000 # Process 100k edges at a time
+
+        for i in range(batch_size):
+            z_sample = z_genes[i] # [num_nodes, num_features]
+            
+            for j in range(0, num_edges, edge_chunk_size):
+                chunk_end = min(j + edge_chunk_size, num_edges)
+                src_chunk = src_nodes[j:chunk_end]
+                dst_chunk = dst_nodes[j:chunk_end]
+
+                z_src = z_sample[src_chunk, :] # [chunk_size, num_features]
+                z_dst = z_sample[dst_chunk, :] # [chunk_size, num_features]
+                
+                dist_sq = torch.sum((z_src - z_dst)**2, dim=1) # [chunk_size]
+                total_graph_reg += torch.sum(dist_sq)
+
+        graph_reg = total_graph_reg / batch_size
         
         return graph_reg
 
