@@ -33,7 +33,7 @@ The main result is a UMAP plot, which is a 2D picture of the cell map the model 
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/your-username/20250812-Disc-with-replogle.git
+git clone https://github.com/LelouchOTR/20250812-Disc-with-replogle.git
 cd 20250812-Disc-with-replogle
 ```
 
