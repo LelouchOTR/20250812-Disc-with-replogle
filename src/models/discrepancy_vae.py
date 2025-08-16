@@ -24,7 +24,7 @@ from torch.utils.data import Dataset, DataLoader
 import pandas as pd
 from scipy import sparse
 import anndata as ad
-from torch_geometric.nn import GCNConv
+from torch_geometric.nn import GCNConv, global_mean_pool
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -41,7 +41,7 @@ class GraphEncoder(nn.Module):
     Graph Convolutional Encoder network for DiscrepancyVAE.
     
     Maps gene expression data to latent space parameters (mean and log variance)
-    using graph convolutions.
+    using graph convolutions and global pooling.
     """
     
     def __init__(self, input_dim: int, hidden_dims: List[int], latent_dim: int,
@@ -76,8 +76,9 @@ class GraphEncoder(nn.Module):
         self.conv1 = GCNConv(1, hidden_dims[0])
         self.conv2 = GCNConv(hidden_dims[0], hidden_dims[1])
         
-        self.mu_layer = nn.Linear(hidden_dims[1] * input_dim, latent_dim)
-        self.logvar_layer = nn.Linear(hidden_dims[1] * input_dim, latent_dim)
+        # The input to the linear layers is now the output of the pooling layer
+        self.mu_layer = nn.Linear(hidden_dims[1], latent_dim)
+        self.logvar_layer = nn.Linear(hidden_dims[1], latent_dim)
         
         self._initialize_weights()
     
@@ -89,7 +90,7 @@ class GraphEncoder(nn.Module):
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
 
-    def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Forward pass through graph encoder.
         
@@ -98,38 +99,53 @@ class GraphEncoder(nn.Module):
             edge_index: Edge index tensor for graph [2, num_edges]
             
         Returns:
-            Tuple of (mu, logvar) tensors [batch_size, latent_dim]
+            Tuple of (mu, logvar, gene_embeddings) tensors
         """
-        # x is [batch_size, num_genes]
-        # GCNConv expects [num_nodes, num_features]
-        # We treat each cell as a separate graph problem.
-        # Node features are the expression values for that cell.
-        
-        batch_size = x.shape[0]
-        num_genes = x.shape[1]
+        batch_size, num_genes = x.shape
 
-        # Reshape x to be [batch_size, num_genes, 1] to represent node features
-        x_reshaped = x.unsqueeze(-1)
+        logger.info(f"GraphEncoder forward: batch_size={batch_size}, num_genes={num_genes}, edge_index shape: {edge_index.shape}")
+        if torch.cuda.is_available() and x.is_cuda:
+            logger.info(f"Initial GPU memory: {torch.cuda.memory_allocated(x.device)/1024**2:.2f} MB allocated, {torch.cuda.memory_reserved(x.device)/1024**2:.2f} MB reserved")
 
-        # Process each item in the batch
-        outputs = []
+        # Process each sample in the batch individually to avoid large tensors
+        batch_mu = []
+        batch_logvar = []
+        batch_gene_embeddings = []
+
         for i in range(batch_size):
-            h = self.conv1(x_reshaped[i], edge_index)
+            # Get the features for the current sample (cell)
+            x_sample = x[i].unsqueeze(-1)  # Shape: [num_genes, 1]
+
+            # Apply graph convolutions
+            h = self.conv1(x_sample, edge_index)
             h = self.activation(h)
             h = self.conv2(h, edge_index)
-            h = self.activation(h)
-            outputs.append(h)
+            gene_embeddings = self.activation(h)  # Shape: [num_genes, hidden_dims[1]]
 
-        # Concatenate batch results
-        h_batch = torch.stack(outputs)
+            # Pool features across genes
+            pooled_output = torch.mean(gene_embeddings, dim=0) # Shape: [hidden_dims[1]]
 
-        # Flatten the output for the linear layers
-        h_flat = h_batch.view(batch_size, -1)
-        
-        mu = self.mu_layer(h_flat)
-        logvar = self.logvar_layer(h_flat)
-        
-        return mu, logvar, h_batch
+            # Latent space parameters
+            mu = self.mu_layer(pooled_output)
+            logvar = self.logvar_layer(pooled_output)
+
+            batch_mu.append(mu)
+            batch_logvar.append(logvar)
+            batch_gene_embeddings.append(gene_embeddings)
+            
+            if i == 0 and torch.cuda.is_available() and x.is_cuda:
+                logger.info(f"After first sample, GPU memory: {torch.cuda.memory_allocated(x.device)/1024**2:.2f} MB allocated, {torch.cuda.memory_reserved(x.device)/1024**2:.2f} MB reserved")
+
+
+        # Stack results into tensors
+        logger.info("Stacking results...")
+        mu = torch.stack(batch_mu)
+        logvar = torch.stack(batch_logvar)
+        gene_embeddings_reshaped = torch.stack(batch_gene_embeddings)
+        if torch.cuda.is_available() and x.is_cuda:
+            logger.info(f"After stacking, GPU memory: {torch.cuda.memory_allocated(x.device)/1024**2:.2f} MB allocated, {torch.cuda.memory_reserved(x.device)/1024**2:.2f} MB reserved")
+
+        return mu, logvar, gene_embeddings_reshaped
 
 
 class Decoder(nn.Module):
@@ -290,7 +306,11 @@ class DiscrepancyVAE(nn.Module):
         )
         
         if self.adjacency_matrix is not None:
-            self.edge_index = self.adjacency_matrix.to_sparse()._indices()
+            if self.adjacency_matrix.is_sparse:
+                self.edge_index = self.adjacency_matrix._indices()
+            else:
+                # For backward compatibility with dense matrices
+                self.edge_index = self.adjacency_matrix.to_sparse()._indices()
         else:
             # If no graph, create a fully connected graph as a placeholder
             logger.warning("Adjacency matrix not provided. Using a fully connected graph for GCN.")
@@ -303,7 +323,7 @@ class DiscrepancyVAE(nn.Module):
         """Count total number of trainable parameters."""
         return sum(p.numel() for p in self.parameters() if p.requires_grad)
     
-    def encode(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    def encode(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Encode input to latent space parameters.
         
@@ -311,7 +331,7 @@ class DiscrepancyVAE(nn.Module):
             x: Input tensor [batch_size, input_dim]
             
         Returns:
-            Tuple of (mu, logvar) tensors
+            Tuple of (mu, logvar, gene_embeddings) tensors
         """
         mu, logvar, h_batch = self.encoder(x, self.edge_index)
         return mu, logvar, h_batch
@@ -418,32 +438,25 @@ class DiscrepancyVAE(nn.Module):
         if self.adjacency_matrix is None:
             return torch.tensor(0.0, device=z_genes.device)
 
-        # Graph Laplacian L = D - A
-        D = torch.diag(torch.sum(self.adjacency_matrix, 1))
-        L = D - self.adjacency_matrix
+        edge_index = self.edge_index
+        src_nodes, dst_nodes = edge_index[0], edge_index[1]
 
         # z_genes has shape [batch_size, num_nodes, num_features]
-        # We want to compute trace(Z_i^T * L * Z_i) for each item i in the batch
-        
-        # Use torch.bmm for batched matrix multiplication.
-        # L needs to be expanded to the batch size.
-        batch_size = z_genes.shape[0]
-        L_batch = L.unsqueeze(0).expand(batch_size, -1, -1)
-        
-        # z_genes.transpose(1, 2) gives [batch_size, num_features, num_nodes]
-        z_t = z_genes.transpose(1, 2)
-        
-        # First matmul: z_t @ L_batch -> [b, f, n] @ [b, n, n] = [b, f, n]
-        term1 = torch.bmm(z_t, L_batch)
-        
-        # Second matmul: term1 @ z_genes -> [b, f, n] @ [b, n, f] = [b, f, f]
-        quadratic_form = torch.bmm(term1, z_genes)
-        
-        # The trace is the sum of the diagonal elements.
-        # We want the trace for each item in the batch, then sum them up.
-        graph_reg = torch.sum(torch.diagonal(quadratic_form, dim1=-2, dim2=-1))
+        # We want to compute the loss for each item in the batch and then sum.
+
+        # Get the embeddings for the source and destination nodes of each edge
+        # The result will have shape [batch_size, num_edges, num_features]
+        z_src = z_genes[:, src_nodes, :]
+        z_dst = z_genes[:, dst_nodes, :]
+
+        # Compute the squared L2 norm of the difference for each edge, for each item in the batch
+        dist_sq = torch.sum((z_src - z_dst)**2, dim=2) # shape [batch_size, num_edges]
+
+        # Sum over all edges and then over the batch
+        graph_reg = torch.sum(dist_sq)
         
         # Normalize by batch size
+        batch_size = z_genes.shape[0]
         graph_reg = graph_reg / batch_size
         
         return graph_reg

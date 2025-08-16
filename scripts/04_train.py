@@ -162,13 +162,11 @@ class ModelTrainer:
         if adj_file.exists() and nodes_file.exists():
             logger.info("Loading gene adjacency graph...")
             from scipy import sparse
-            adj_matrix = sparse.load_npz(adj_file)
+            # Keep as scipy sparse matrix for now
+            self.adjacency_matrix = sparse.load_npz(adj_file)
             with open(nodes_file, 'r') as f:
-                node_mapping = json.load(f)
-
-            self.adjacency_matrix = torch.from_numpy(adj_matrix.toarray()).float().to(self.device)
-            self.node_mapping = node_mapping
-            logger.info(f"Loaded adjacency matrix: {self.adjacency_matrix.shape}")
+                self.node_mapping = json.load(f)
+            logger.info(f"Loaded adjacency matrix (scipy): {self.adjacency_matrix.shape}")
         else:
             logger.warning(f"Graph files not found in {graph_dir}, proceeding without graph")
             self.adjacency_matrix = None
@@ -185,7 +183,7 @@ class ModelTrainer:
         data_genes = self.adata_train.var_names.tolist()
 
         common_genes = sorted(list(set(graph_genes) & set(data_genes)))
-        
+
         if not common_genes:
             raise TrainingError("No common genes found between expression data and graph.")
 
@@ -196,11 +194,18 @@ class ModelTrainer:
         self.adata_val = self.adata_val[:, common_genes].copy()
         self.input_dim = len(common_genes)
 
-        # Filter adjacency matrix
+        # Filter adjacency matrix (which is a scipy.sparse matrix)
         graph_gene_to_idx = {gene: i for i, gene in enumerate(graph_genes)}
         common_gene_indices = [graph_gene_to_idx[gene] for gene in common_genes]
-        
+
         self.adjacency_matrix = self.adjacency_matrix[common_gene_indices, :][:, common_gene_indices]
+
+        # Now convert the filtered scipy sparse matrix to a torch sparse tensor
+        coo = self.adjacency_matrix.tocoo()
+        indices = torch.from_numpy(np.vstack((coo.row, coo.col))).long()
+        values = torch.from_numpy(coo.data).float()
+        shape = torch.Size(coo.shape)
+        self.adjacency_matrix = torch.sparse_coo_tensor(indices, values, shape).to(self.device)
 
         # Re-create data loaders with filtered data
         num_workers = int(self.training_params.get('num_workers', 4))
@@ -608,7 +613,17 @@ def main():
     if args.device:
         device = torch.device(args.device)
     else:
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        if torch.cuda.is_available():
+            try:
+                # Check if CUDA is actually working
+                torch.cuda.init()
+                device = torch.device('cuda')
+            except RuntimeError as e:
+                logger.warning(f"CUDA available but initialization failed: {e}")
+                logger.warning("Falling back to CPU.")
+                device = torch.device('cpu')
+        else:
+            device = torch.device('cpu')
 
     logger.info(f"Using device: {device}")
 
