@@ -96,6 +96,8 @@ class ModelTrainer:
         self.val_loader = None
         self.writer = None
         self.adjacency_matrix = None
+        self.graph_gene_idx = None
+        self.graph_gene_mask = None
 
         self.start_epoch = 0
         self.train_history = defaultdict(list)
@@ -189,33 +191,30 @@ class ModelTrainer:
 
         logger.info(f"Found {len(common_genes)} common genes.")
 
-        # Filter AnnData objects
-        self.adata_train = self.adata_train[:, common_genes].copy()
-        self.adata_val = self.adata_val[:, common_genes].copy()
-        self.input_dim = len(common_genes)
+        # Create a mapping from gene names to their indices in the full dataset
+        data_gene_to_idx = {gene: i for i, gene in enumerate(data_genes)}
+        
+        # Get the indices of the common genes in the full dataset
+        self.graph_gene_idx = torch.tensor(
+            [data_gene_to_idx[gene] for gene in common_genes if gene in data_gene_to_idx],
+            dtype=torch.long
+        ).to(self.device)
 
-        # Filter adjacency matrix (which is a scipy.sparse matrix)
+        # Filter adjacency matrix to match the order of common_genes
         graph_gene_to_idx = {gene: i for i, gene in enumerate(graph_genes)}
-        common_gene_indices = [graph_gene_to_idx[gene] for gene in common_genes]
+        common_gene_indices_in_graph = [graph_gene_to_idx[gene] for gene in common_genes]
 
-        self.adjacency_matrix = self.adjacency_matrix[common_gene_indices, :][:, common_gene_indices]
+        self.adjacency_matrix = self.adjacency_matrix[common_gene_indices_in_graph, :][:, common_gene_indices_in_graph]
 
-        # Now convert the filtered scipy sparse matrix to a torch sparse tensor
+        # Convert the filtered scipy sparse matrix to a torch sparse tensor
         coo = self.adjacency_matrix.tocoo()
         indices = torch.from_numpy(np.vstack((coo.row, coo.col))).long()
         values = torch.from_numpy(coo.data).float()
         shape = torch.Size(coo.shape)
         self.adjacency_matrix = torch.sparse_coo_tensor(indices, values, shape).to(self.device)
 
-        # Re-create data loaders with filtered data
-        num_workers = int(self.training_params.get('num_workers', 4))
-        self.train_loader, self.val_loader = create_data_loaders(
-            self.adata_train, self.adata_val,
-            batch_size=self.batch_size,
-            num_workers=num_workers
-        )
-
-        logger.info(f"Re-created data loaders with {self.input_dim} harmonized genes.")
+        logger.info(f"Model will use all {self.input_dim} HVGs.")
+        logger.info(f"Graph regularization will be applied to {len(self.graph_gene_idx)} genes.")
         logger.info(f"Final adjacency matrix shape: {self.adjacency_matrix.shape}")
 
     def initialize_model(self) -> None:
@@ -224,7 +223,8 @@ class ModelTrainer:
         self.model = DiscrepancyVAE(
             input_dim=self.input_dim,
             config=self.model_config,
-            adjacency_matrix=self.adjacency_matrix
+            adjacency_matrix=self.adjacency_matrix,
+            graph_gene_idx=self.graph_gene_idx
         )
 
         self.model.to(self.device)

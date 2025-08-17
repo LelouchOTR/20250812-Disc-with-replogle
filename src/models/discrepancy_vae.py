@@ -248,7 +248,9 @@ class DiscrepancyVAE(nn.Module):
     and can compute discrepancies between control and perturbed conditions.
     """
     
-    def __init__(self, input_dim: int, config: Dict[str, Any], adjacency_matrix: Optional[torch.Tensor] = None):
+    def __init__(self, input_dim: int, config: Dict[str, Any], 
+                 adjacency_matrix: Optional[torch.Tensor] = None, 
+                 graph_gene_idx: Optional[torch.Tensor] = None):
         """
         Initialize DiscrepancyVAE model.
         
@@ -256,12 +258,14 @@ class DiscrepancyVAE(nn.Module):
             input_dim: Input dimension (number of genes)
             config: Model configuration dictionary
             adjacency_matrix: Optional adjacency matrix for graph-based regularization
+            graph_gene_idx: Optional tensor of indices for genes in the graph
         """
         super(DiscrepancyVAE, self).__init__()
         
         self.input_dim = input_dim
         self.config = config
         self.adjacency_matrix = adjacency_matrix
+        self.graph_gene_idx = graph_gene_idx
         
         # Extract model parameters
         model_params = config.get('model_params', {})
@@ -440,16 +444,19 @@ class DiscrepancyVAE(nn.Module):
         This loss encourages connected nodes in the graph to have similar latent representations.
         z_genes shape: [batch_size, num_nodes, num_features]
         """
-        if self.adjacency_matrix is None:
+        if self.adjacency_matrix is None or self.graph_gene_idx is None:
             return torch.tensor(0.0, device=z_genes.device)
+
+        # Select the embeddings of the genes that are in the graph
+        graph_z_genes = z_genes[:, self.graph_gene_idx, :]
 
         edge_index = self.edge_index
         src_nodes, dst_nodes = edge_index[0], edge_index[1]
 
-        batch_size, num_nodes, num_features = z_genes.shape
+        batch_size, num_nodes, num_features = graph_z_genes.shape
         
         # Reshape z_genes to be [batch_size * num_nodes, num_features]
-        z_genes_reshaped = z_genes.view(-1, num_features)
+        z_genes_reshaped = graph_z_genes.reshape(-1, num_features)
 
         # Adjust indices for the batch
         src_nodes_batch = src_nodes.repeat(batch_size) + torch.arange(batch_size, device=z_genes.device).repeat_interleave(len(src_nodes)) * num_nodes
@@ -639,7 +646,7 @@ class DiscrepancyVAE(nn.Module):
         logger.info(f"Saved checkpoint to {filepath.name}")
     
     @classmethod
-    def load_checkpoint(cls, filepath: Union[str, Path], device: torch.device = None, adjacency_matrix: Optional[torch.Tensor] = None) -> Tuple['DiscrepancyVAE', Dict]:
+    def load_checkpoint(cls, filepath: Union[str, Path], device: torch.device = None, adjacency_matrix: Optional[torch.Tensor] = None, graph_gene_idx: Optional[torch.Tensor] = None) -> Tuple['DiscrepancyVAE', Dict]:
         """
         Load model from checkpoint.
         
@@ -647,6 +654,7 @@ class DiscrepancyVAE(nn.Module):
             filepath: Path to checkpoint file
             device: Device to load model on
             adjacency_matrix: Optional adjacency matrix for graph-based regularization.
+            graph_gene_idx: Optional tensor of indices for genes in the graph
             
         Returns:
             Tuple of (model, checkpoint_info)
@@ -657,13 +665,17 @@ class DiscrepancyVAE(nn.Module):
         if adjacency_matrix is not None:
             adjacency_matrix = adjacency_matrix.to(device)
 
+        if graph_gene_idx is not None:
+            graph_gene_idx = graph_gene_idx.to(device)
+
         checkpoint = torch.load(filepath, map_location=device)
         
         # Create model
         model = cls(
             input_dim=checkpoint['input_dim'],
             config=checkpoint['model_config'],
-            adjacency_matrix=adjacency_matrix
+            adjacency_matrix=adjacency_matrix,
+            graph_gene_idx=graph_gene_idx
         )
         
         # Load state dict
