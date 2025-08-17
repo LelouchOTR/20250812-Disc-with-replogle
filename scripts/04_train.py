@@ -298,7 +298,7 @@ class ModelTrainer:
         epoch_losses = defaultdict(list)
 
         pbar = tqdm(total=len(self.train_loader),
-                    desc=f"Epoch {epoch + 1}/{self.epochs}",
+                    desc=f"Epoch {epoch + 1}/{self.epochs} [{datetime.now().strftime('%H:%M:%S')}]",
                     position=0,
                     leave=True,
                     dynamic_ncols=True)
@@ -329,13 +329,14 @@ class ModelTrainer:
                 epoch_losses[key].append(value.item())
 
             pbar.update(1)
-            pbar.set_postfix({
-                'L': f"{total_loss.item():.0f}",
-                'RL': f"{loss_dict['reconstruction_loss'].item():.0f}",
-                'KL': f"{loss_dict['kl_loss'].item():.0f}",
-                'DL': f"{loss_dict['discrepancy_loss'].item():.0f}",
-                'GL': f"{loss_dict['graph_reg_loss'].item():.2f}"
-            })
+            if batch_idx % 10 == 0:  # Update postfix every 10 batches
+                pbar.set_postfix({
+                    'L': f"{total_loss.item():.0f}",
+                    'RL': f"{loss_dict['reconstruction_loss'].item():.0f}",
+                    'KL': f"{loss_dict['kl_loss'].item():.0f}",
+                    'DL': f"{loss_dict['discrepancy_loss'].item():.0f}",
+                    'GL': f"{loss_dict['graph_reg_loss'].item():.2f}"
+                })
 
         pbar.close()
 
@@ -417,6 +418,7 @@ class ModelTrainer:
             self.train_history[key].append(value)
 
         if val_metrics:
+            self.val_epochs.append(epoch)
             for key, value in val_metrics.items():
                 self.val_history[key].append(value)
 
@@ -530,11 +532,12 @@ class ModelTrainer:
 
         try:
             for epoch in range(self.start_epoch, self.epochs):
+                epoch_start_time = time.time()
                 train_metrics = self.train_epoch(epoch)
+                epoch_end_time = time.time()
 
                 val_metrics = None
                 if epoch % self.validation_freq == 0 or epoch == self.epochs - 1:
-                    self.val_epochs.append(epoch)
                     val_metrics = self.validate_epoch(epoch)
 
                     val_loss = val_metrics['total_loss']
@@ -546,6 +549,13 @@ class ModelTrainer:
                     else:
                         self.epochs_without_improvement += self.validation_freq
                         is_best = False
+
+                    logger.info(f"Epoch {epoch + 1}/{self.epochs} | "
+                                f"Train Loss: {train_metrics['total_loss']:.2f} | "
+                                f"Val Loss: {val_metrics['total_loss']:.2f} | "
+                                f"Best Val Loss: {self.best_val_loss:.2f} at epoch {self.best_epoch + 1} | "
+                                f"LR: {self.optimizer.param_groups[0]['lr']:.1e} | "
+                                f"Time: {epoch_end_time - epoch_start_time:.2f}s")
 
                     if self.epochs_without_improvement >= self.early_stopping_patience:
                         logger.info(f"Early stopping at epoch {epoch + 1} "
