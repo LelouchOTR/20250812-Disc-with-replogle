@@ -269,8 +269,8 @@ class DiscrepancyVAE(nn.Module):
         self.hidden_dims = model_params.get('hidden_dims', [512, 256])
         self.dropout_rate = model_params.get('dropout_rate', 0.1)
         self.batch_norm = model_params.get('batch_norm', True)
-        activation = model_params.get('activation', 'relu')
-        output_activation = model_params.get('output_activation', 'linear')
+        self.activation = model_params.get('activation', 'relu')
+        self.output_activation = model_params.get('output_activation', 'linear')
         
         # Loss parameters
         loss_params = config.get('loss_params', {})
@@ -286,7 +286,7 @@ class DiscrepancyVAE(nn.Module):
             latent_dim=self.latent_dim,
             dropout_rate=self.dropout_rate,
             batch_norm=self.batch_norm,
-            activation=activation
+            activation=self.activation
         )
         
         # Decoder hidden dims are reversed
@@ -297,8 +297,8 @@ class DiscrepancyVAE(nn.Module):
             output_dim=input_dim,
             dropout_rate=self.dropout_rate,
             batch_norm=self.batch_norm,
-            activation=activation,
-            output_activation=output_activation
+            activation=self.activation,
+            output_activation=self.output_activation
         )
         
         if self.adjacency_matrix is not None:
