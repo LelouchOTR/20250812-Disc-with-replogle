@@ -296,15 +296,17 @@ class DiscrepancyVAE(nn.Module):
         
         if self.adjacency_matrix is not None:
             if self.adjacency_matrix.is_sparse:
-                self.edge_index = self.adjacency_matrix._indices()
+                edge_index = self.adjacency_matrix._indices()
             else:
                 # For backward compatibility with dense matrices
-                self.edge_index = self.adjacency_matrix.to_sparse()._indices()
+                edge_index = self.adjacency_matrix.to_sparse()._indices()
         else:
             # If no graph, create a fully connected graph as a placeholder
             logger.warning("Adjacency matrix not provided. Using a fully connected graph for GCN.")
             adj = torch.ones(input_dim, input_dim)
-            self.edge_index = adj.to_sparse()._indices()
+            edge_index = adj.to_sparse()._indices()
+
+        self.register_buffer('edge_index', edge_index)
 
         logger.info(f"Initialized DiscrepancyVAE with {self._count_parameters()} parameters")
     
@@ -645,7 +647,7 @@ class DiscrepancyVAE(nn.Module):
         )
         
         # Load state dict
-        model.load_state_dict(checkpoint['model_state_dict'])
+        model.load_state_dict(checkpoint['model_state_dict'], strict=False)
         model.to(device)
         
         # Extract checkpoint info
