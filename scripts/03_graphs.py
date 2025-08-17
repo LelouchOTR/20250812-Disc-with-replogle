@@ -443,25 +443,15 @@ class GeneOntologyGraphBuilder:
         return matrix
 
     def _compute_jaccard_similarity(self, matrix: np.ndarray) -> np.ndarray:
-        n_genes = matrix.shape[0]
-        similarity_matrix = np.zeros((n_genes, n_genes))
-
-        for i in range(n_genes):
-            for j in range(i, n_genes):
-                if i == j:
-                    similarity_matrix[i, j] = 1.0
-                else:
-                    intersection = np.sum(matrix[i] & matrix[j])
-                    union = np.sum(matrix[i] | matrix[j])
-
-                    if union > 0:
-                        jaccard = intersection / union
-                    else:
-                        jaccard = 0.0
-
-                    similarity_matrix[i, j] = jaccard
-                    similarity_matrix[j, i] = jaccard
-
+        from sklearn.metrics.pairwise import pairwise_distances
+        
+        # pairwise_distances with metric='jaccard' returns Jaccard distance (1 - similarity)
+        # It's optimized for boolean matrices. Using n_jobs=-1 parallelizes the computation.
+        jaccard_distances = pairwise_distances(matrix.astype(bool), metric='jaccard', n_jobs=-1)
+        
+        # Convert distance to similarity
+        similarity_matrix = 1 - jaccard_distances
+        
         return similarity_matrix
 
     def _compute_overlap_similarity(self, matrix: np.ndarray) -> np.ndarray:
@@ -580,6 +570,23 @@ class GeneOntologyGraphBuilder:
 
         logger.info(f"Saved metadata: {metadata_file}")
 
+    def save_go_gene_list(self, output_dir: Path) -> None:
+        """Saves the list of all genes found in GO annotations to a JSON file."""
+        logger.info("Saving full GO gene list...")
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        all_go_genes = list(self.annotation_parser.annotations.keys())
+        
+        # Optional: Map to Ensembl IDs here if needed, but for harmonization
+        # it's often better to work with the original symbols found in the file.
+        
+        gene_list_file = output_dir / "go_gene_list.json"
+        with open(gene_list_file, 'w') as f:
+            json.dump(all_go_genes, f, indent=2)
+            
+        logger.info(f"Saved {len(all_go_genes)} gene symbols to {gene_list_file}")
+
 
 def load_graph(graph_dir: Path, format_name: str = 'pickle') -> nx.Graph:
     graph_dir = Path(graph_dir)
@@ -682,6 +689,9 @@ def main():
         annotation_file, ontology_file = builder.download_go_data(args.force_refresh)
 
         builder.parse_go_data(annotation_file, ontology_file)
+
+        # Save the list of all genes found in the GO annotations
+        builder.save_go_gene_list(args.output_dir)
 
         valid_terms = builder.filter_go_terms()
 

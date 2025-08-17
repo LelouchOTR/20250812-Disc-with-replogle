@@ -26,41 +26,42 @@ logger = logging.getLogger(__name__)
 
 def create_run_dirs(config: dict, args) -> dict:
     """
-    Create a timestamped run directory structure and configure a run-specific
-    file logger. Returns a dict with paths for raw, processed, graphs, models,
+    Create or reuse a run directory structure and configure logging.
+    Returns a dict with paths for raw, processed, graphs, models,
     evaluation, logs, and cache directories (all as strings).
-
-    Behavior:
-    - Uses config.output_paths.base_output_dir and config.output_paths.* for naming.
-    - Honors output_paths.timestamp_format and output_paths.use_timestamps.
-    - Includes optional args.run_id when provided.
-    - Writes run_metadata.json into the run root.
     """
     import json
     import subprocess
     from datetime import datetime
 
-    # Resolve base output dir and naming parameters from config
-    output_cfg = config.get('output_paths', {}) if isinstance(config, dict) else {}
-    base_output_dir = Path(output_cfg.get('base_output_dir', 'outputs'))
-    experiment_name = output_cfg.get('experiment_name', 'run')
-    timestamp_format = output_cfg.get('timestamp_format', '%Y%m%d_%H%M%S')
-    use_timestamps = bool(output_cfg.get('use_timestamps', True))
+    run_dir_arg = getattr(args, 'run_dir', None)
 
-    run_id = getattr(args, 'run_id', None)
-
-    # Build run folder name
-    now = datetime.now()
-    timestamp = now.strftime(timestamp_format)
-    if run_id and not use_timestamps:
-        run_folder_name = f"{experiment_name}_{run_id}"
-    elif run_id:
-        run_folder_name = f"{experiment_name}_{run_id}_{timestamp}"
+    if run_dir_arg:
+        run_root = Path(run_dir_arg)
+        if not run_root.is_dir():
+            raise PipelineError(f"Specified run directory does not exist: {run_root}")
+        logger.info(f"Resuming run in existing directory: {run_root}")
+        now = datetime.now()
     else:
-        run_folder_name = f"{experiment_name}_{timestamp}" if use_timestamps else f"{experiment_name}"
+        output_cfg = config.get('output_paths', {}) if isinstance(config, dict) else {}
+        base_output_dir = Path(output_cfg.get('base_output_dir', 'outputs'))
+        experiment_name = output_cfg.get('experiment_name', 'run')
+        timestamp_format = output_cfg.get('timestamp_format', '%Y%m%d_%H%M%S')
+        use_timestamps = bool(output_cfg.get('use_timestamps', True))
+        run_id = getattr(args, 'run_id', None)
 
-    # Create run directory and canonical subdirectories
-    run_root = Path(base_output_dir) / run_folder_name
+        now = datetime.now()
+        timestamp = now.strftime(timestamp_format)
+        if run_id and not use_timestamps:
+            run_folder_name = f"{experiment_name}_{run_id}"
+        elif run_id:
+            run_folder_name = f"{experiment_name}_{run_id}_{timestamp}"
+        else:
+            run_folder_name = f"{experiment_name}_{timestamp}" if use_timestamps else f"{experiment_name}"
+
+        run_root = Path(base_output_dir) / run_folder_name
+        logger.info(f"Creating new run directory: {run_root}")
+
     subdirs = {
         'raw': run_root / 'raw',
         'processed': run_root / 'processed',
@@ -74,7 +75,6 @@ def create_run_dirs(config: dict, args) -> dict:
     for p in subdirs.values():
         p.mkdir(parents=True, exist_ok=True)
 
-    # Add a file handler to the root logger to capture pipeline logs inside run folder
     try:
         file_handler = logging.FileHandler(str(subdirs['logs'] / 'pipeline.log'))
         file_handler.setLevel(logging.INFO)
@@ -83,33 +83,28 @@ def create_run_dirs(config: dict, args) -> dict:
     except Exception as e:
         logger.warning(f"Failed to create run-specific log file handler: {e}")
 
-    # Collect metadata about the run
-    metadata = {
-        'run_root': str(run_root),
-        'run_name': run_folder_name,
-        'timestamp': now.isoformat(),
-        'seed': getattr(args, 'seed', None),
-        'config_file': getattr(args, 'config', None)
-    }
-
-    # Try to capture git commit if available
-    try:
-        git_sha = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'],
-                                          stderr=subprocess.DEVNULL).decode().strip()
-        metadata['git_sha'] = git_sha
-    except Exception:
-        metadata['git_sha'] = None
-
-    # Save metadata
-    try:
-        with open(run_root / 'run_metadata.json', 'w') as fh:
-            json.dump(metadata, fh, indent=2)
-    except Exception as e:
-        logger.warning(f"Unable to write run metadata to {run_root}: {e}")
+    if not run_dir_arg:
+        metadata = {
+            'run_root': str(run_root),
+            'run_name': run_root.name,
+            'timestamp': now.isoformat(),
+            'seed': getattr(args, 'seed', None),
+            'config_file': getattr(args, 'config', None)
+        }
+        try:
+            git_sha = subprocess.check_output(['git', 'rev-parse', '--short', 'HEAD'],
+                                              stderr=subprocess.DEVNULL).decode().strip()
+            metadata['git_sha'] = git_sha
+        except Exception:
+            metadata['git_sha'] = None
+        try:
+            with open(run_root / 'run_metadata.json', 'w') as fh:
+                json.dump(metadata, fh, indent=2)
+        except Exception as e:
+            logger.warning(f"Unable to write run metadata to {run_root}: {e}")
 
     logger.info(f"Created run directory: {run_root}")
 
-    # Return string paths for compatibility with subprocess args used below
     return {k: str(v) for k, v in subdirs.items()}
 
 
@@ -192,6 +187,7 @@ def run_process(config: dict, run_dirs: dict, seed: int):
         raw_data_file = os.path.join(raw_data_dir, raw_data_files[0])
 
     output_dir = run_dirs.get('processed')
+    graph_node_mapping_path = os.path.join(run_dirs.get('graphs'), 'node_mapping.json')
     cmd = [
         "python", "scripts/02_process.py",
         "--log-dir", run_dirs['logs'],
@@ -200,6 +196,8 @@ def run_process(config: dict, run_dirs: dict, seed: int):
         "--config", "data_config",
         "--seed", str(seed)
     ]
+    if os.path.exists(graph_node_mapping_path):
+        cmd.extend(["--graph-node-mapping", graph_node_mapping_path])
     run_step(cmd)
     logger.info(f"--- Processing Step Complete (output: {output_dir}) ---")
 
@@ -280,6 +278,7 @@ def main():
                         help="Main pipeline configuration file (without path or extension).")
     parser.add_argument("--seed", type=int, default=42, help="Global random seed.")
     parser.add_argument("--run-id", type=str, help="Optional run id to include in the run folder name.")
+    parser.add_argument("--run-dir", type=str, help="Path to an existing run directory to resume a run.")
 
     args = parser.parse_args()
 
@@ -307,7 +306,7 @@ def main():
 
     steps_to_run = args.steps
     if 'all' in steps_to_run:
-        steps_to_run = ['ingest', 'process', 'graphs', 'train', 'evaluate']
+        steps_to_run = ['ingest', 'graphs', 'process', 'train', 'evaluate']
 
     logger.info(f"Running pipeline with steps: {', '.join(steps_to_run)}")
 

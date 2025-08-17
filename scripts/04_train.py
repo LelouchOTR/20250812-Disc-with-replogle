@@ -177,44 +177,39 @@ class ModelTrainer:
     def _harmonize_genes(self):
         if self.adjacency_matrix is None or self.node_mapping is None:
             logger.info("No graph specified, skipping gene harmonization.")
+            self.adjacency_matrix = None # Ensure it's None if no graph
             return
 
-        logger.info("Harmonizing genes between expression data and graph...")
+        logger.info("Verifying gene harmonization between data and graph...")
 
         graph_genes = list(self.node_mapping.values())
         data_genes = self.adata_train.var_names.tolist()
 
-        common_genes = sorted(list(set(graph_genes) & set(data_genes)))
+        if set(graph_genes) != set(data_genes):
+            raise TrainingError(
+                f"Gene mismatch between data ({len(data_genes)} genes) and graph ({len(graph_genes)} genes). "
+                f"Data must be pre-harmonized before training. "
+                f"Common: {len(set(graph_genes) & set(data_genes))}, "
+                f"Data-only: {len(set(data_genes) - set(graph_genes))}, "
+                f"Graph-only: {len(set(graph_genes) - set(data_genes))}"
+            )
 
-        if not common_genes:
-            raise TrainingError("No common genes found between expression data and graph.")
+        # Reorder adjacency matrix to match data_genes order
+        gene_to_idx_graph = {gene: i for i, gene in enumerate(graph_genes)}
+        indices = [gene_to_idx_graph[gene] for gene in data_genes]
+        self.adjacency_matrix = self.adjacency_matrix[indices, :][:, indices]
 
-        logger.info(f"Found {len(common_genes)} common genes.")
-
-        # Create a mapping from gene names to their indices in the full dataset
-        data_gene_to_idx = {gene: i for i, gene in enumerate(data_genes)}
-        
-        # Get the indices of the common genes in the full dataset
-        self.graph_gene_idx = torch.tensor(
-            [data_gene_to_idx[gene] for gene in common_genes if gene in data_gene_to_idx],
-            dtype=torch.long
-        ).to(self.device)
-
-        # Filter adjacency matrix to match the order of common_genes
-        graph_gene_to_idx = {gene: i for i, gene in enumerate(graph_genes)}
-        common_gene_indices_in_graph = [graph_gene_to_idx[gene] for gene in common_genes]
-
-        self.adjacency_matrix = self.adjacency_matrix[common_gene_indices_in_graph, :][:, common_gene_indices_in_graph]
-
-        # Convert the filtered scipy sparse matrix to a torch sparse tensor
+        # Convert the harmonized scipy sparse matrix to a torch sparse tensor
         coo = self.adjacency_matrix.tocoo()
         indices = torch.from_numpy(np.vstack((coo.row, coo.col))).long()
         values = torch.from_numpy(coo.data).float()
         shape = torch.Size(coo.shape)
         self.adjacency_matrix = torch.sparse_coo_tensor(indices, values, shape).to(self.device)
 
-        logger.info(f"Model will use all {self.input_dim} HVGs.")
-        logger.info(f"Graph regularization will be applied to {len(self.graph_gene_idx)} genes.")
+        # The graph is now aligned with the input, so no special indexing is needed
+        self.graph_gene_idx = None 
+
+        logger.info(f"Successfully verified that all {self.input_dim} genes are harmonized with the graph.")
         logger.info(f"Final adjacency matrix shape: {self.adjacency_matrix.shape}")
 
     def initialize_model(self) -> None:
@@ -603,6 +598,8 @@ def main():
     parser.add_argument("--device", type=str, help="Device to use (cuda/cpu)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--resume", type=str, help="Resume training from checkpoint")
+    parser.add_argument("--beta", type=float, help="Override the beta value for KL divergence weight")
+    parser.add_argument("--dropout-rate", type=float, help="Override the dropout rate for the model")
 
     args = parser.parse_args()
     
@@ -642,6 +639,14 @@ def main():
     except Exception as e:
         logger.error(f"Failed to load configuration: {e}")
         return 1
+
+    # Override config with command-line arguments if provided
+    if args.beta is not None:
+        config['model_config']['loss_params']['beta'] = args.beta
+        logger.info(f"Overriding beta with command-line value: {args.beta}")
+    if args.dropout_rate is not None:
+        config['model_config']['model_params']['dropout_rate'] = args.dropout_rate
+        logger.info(f"Overriding dropout_rate with command-line value: {args.dropout_rate}")
 
     logger.info("Starting DiscrepancyVAE training pipeline")
     logger.info(f"Data directory: {args.data_dir}")

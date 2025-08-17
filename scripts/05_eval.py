@@ -89,26 +89,24 @@ class ModelEvaluator:
             logger.info("No graph specified, skipping gene harmonization.")
             return
 
-        logger.info("Harmonizing genes between expression data and graph...")
+        logger.info("Verifying gene harmonization between data and graph...")
 
         graph_genes = list(self.node_mapping.values())
         data_genes = self.adata_test.var_names.tolist()
 
-        common_genes = sorted(list(set(graph_genes) & set(data_genes)))
+        if set(graph_genes) != set(data_genes):
+            raise EvaluationError(
+                f"Gene mismatch between data ({len(data_genes)} genes) and graph ({len(graph_genes)} genes). "
+                f"Data must be pre-harmonized before evaluation. "
+                f"Common: {len(set(graph_genes) & set(data_genes))}, "
+                f"Data-only: {len(set(data_genes) - set(graph_genes))}, "
+                f"Graph-only: {len(set(graph_genes) - set(data_genes))}"
+            )
 
-        if not common_genes:
-            raise EvaluationError("No common genes found between expression data and graph.")
-
-        logger.info(f"Found {len(common_genes)} common genes.")
-
-        # Filter AnnData objects
-        self.adata_test = self.adata_test[:, common_genes].copy()
-
-        # Filter adjacency matrix
-        graph_gene_to_idx = {gene: i for i, gene in enumerate(graph_genes)}
-        common_gene_indices = [graph_gene_to_idx[gene] for gene in common_genes]
-        
-        self.adjacency_matrix = self.adjacency_matrix[common_gene_indices, :][:, common_gene_indices]
+        # Reorder adjacency matrix to match data_genes order
+        gene_to_idx_graph = {gene: i for i, gene in enumerate(graph_genes)}
+        indices = [gene_to_idx_graph[gene] for gene in data_genes]
+        self.adjacency_matrix = self.adjacency_matrix[indices, :][:, indices]
 
         # Convert to torch sparse tensor
         coo = self.adjacency_matrix.tocoo()
@@ -117,7 +115,7 @@ class ModelEvaluator:
         shape = torch.Size(coo.shape)
         self.adjacency_matrix = torch.sparse_coo_tensor(indices, values, shape).to(self.device)
 
-        logger.info(f"Re-created data loaders with {len(common_genes)} harmonized genes.")
+        logger.info(f"Successfully verified that all {self.adata_test.n_vars} genes are harmonized with the graph.")
         logger.info(f"Final adjacency matrix shape: {self.adjacency_matrix.shape}")
 
     def load_model_and_data(self, model_path: Path, data_path: Path, graph_dir: Path):

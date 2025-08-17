@@ -79,6 +79,8 @@ class GraphEncoder(nn.Module):
         self.conv1 = GCNConv(1, hidden_dims[0])
         self.conv2 = GCNConv(hidden_dims[0], hidden_dims[1])
         
+        self.dropout = nn.Dropout(dropout_rate)
+
         # The input to the linear layers is now the output of the pooling layer
         self.mu_layer = nn.Linear(hidden_dims[1], latent_dim)
         self.logvar_layer = nn.Linear(hidden_dims[1], latent_dim)
@@ -123,6 +125,7 @@ class GraphEncoder(nn.Module):
         for i in range(batch_size):
             h = self.conv1(x_reshaped[i], edge_index)
             h = self.activation(h)
+            h = self.dropout(h)
             gene_embeddings = self.conv2(h, edge_index)
             gene_embeddings_list.append(gene_embeddings)
             

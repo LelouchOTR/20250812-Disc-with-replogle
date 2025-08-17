@@ -46,6 +46,7 @@ dependencies:
 
   # Development
   - pytest
+  - tensorboard
 
   # Pip-only packages
   - pip:

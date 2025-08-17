@@ -13,6 +13,7 @@ import sys
 import logging
 import argparse
 import warnings
+import json
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 import numpy as np
@@ -286,6 +287,32 @@ class SingleCellDataProcessor:
 
         return adata
 
+    def harmonize_genes_with_graph(self, adata: ad.AnnData, graph_node_mapping_path: Path) -> ad.AnnData:
+        """Filters AnnData object to include only genes present in the graph node mapping."""
+        if not graph_node_mapping_path or not Path(graph_node_mapping_path).exists():
+            logger.warning(f"Graph node mapping not found at {graph_node_mapping_path}. Skipping harmonization.")
+            return adata
+
+        logger.info(f"Harmonizing genes with node mapping from: {graph_node_mapping_path}")
+        with open(graph_node_mapping_path, 'r') as f:
+            node_mapping = json.load(f)
+        
+        graph_genes = node_mapping.keys()
+        graph_genes_set = set(graph_genes)
+        original_genes_set = set(adata.var_names)
+
+        common_genes = list(original_genes_set.intersection(graph_genes_set))
+
+        if not common_genes:
+            raise DataProcessingError("No common genes found between data and graph node mapping.")
+
+        logger.info(f"Found {len(common_genes)} common genes out of {len(original_genes_set)} data genes and {len(graph_genes_set)} graph genes.")
+
+        adata = adata[:, common_genes].copy()
+        logger.info(f"Data shape after harmonization: {adata.shape}")
+
+        return adata
+
     def map_gene_ids(self, adata: ad.AnnData) -> ad.AnnData:
         logger.info("Mapping gene IDs to Ensembl namespace...")
 
@@ -443,6 +470,7 @@ class SingleCellDataProcessor:
 def main():
     parser = argparse.ArgumentParser(description="Process single-cell perturbation data")
     parser.add_argument("--input", type=str, required=True, help="Path to raw data file")
+    parser.add_argument("--graph-node-mapping", type=str, help="Path to the JSON file containing the graph's node-to-ID mapping for harmonization")
     parser.add_argument("--config", type=str, default="data_config", help="Configuration file name")
     parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/processed",
                         help="Output directory")
@@ -485,6 +513,9 @@ def main():
         adata = processor.load_raw_data(args.input)
 
         adata = processor.apply_quality_control(adata)
+
+        if args.graph_node_mapping:
+            adata = processor.harmonize_genes_with_graph(adata, Path(args.graph_node_mapping))
 
         adata = processor.assign_guides(adata)
 
