@@ -663,6 +663,15 @@ class DiscrepancyVAE(nn.Module):
         # Load state dict
         model.load_state_dict(checkpoint['model_state_dict'], strict=False)
         model.to(device)
+
+        # Re-initialize edge_index from the provided adjacency_matrix after loading state dict
+        if adjacency_matrix is not None:
+            model.adjacency_matrix = adjacency_matrix.to(device)
+            if adjacency_matrix.is_sparse:
+                edge_index = adjacency_matrix._indices()
+            else:
+                edge_index = adjacency_matrix.to_sparse()._indices()
+            model.edge_index = edge_index.to(device)
         
         # Extract checkpoint info
         checkpoint_info = {

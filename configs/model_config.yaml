@@ -25,7 +25,7 @@ model_config:
 # Training configuration
 training:
   # Optimization parameters
-  batch_size: 16                        # Training batch size
+  batch_size: 2                         # Training batch size
   learning_rate: 0.001                   # Initial learning rate
   weight_decay: 1e-5                     # L2 regularization weight decay
 
