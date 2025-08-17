@@ -248,6 +248,7 @@ def run_evaluate(config: dict, run_dirs: dict, seed: int):
     model_path = os.path.join(run_dirs.get('models'), "best_model.pth")
     data_path = os.path.join(run_dirs.get('processed'), "test_data.h5ad")
     output_dir = run_dirs.get('evaluation')
+    graph_dir = run_dirs.get('graphs')
 
     cmd = [
         "python", "scripts/05_eval.py",
@@ -259,6 +260,9 @@ def run_evaluate(config: dict, run_dirs: dict, seed: int):
         "--seed", str(seed),
         "--device", "cuda"
     ]
+    if os.path.exists(graph_dir):
+        cmd.extend(["--graph-dir", graph_dir])
+        
     run_step(cmd)
     logger.info(f"--- Evaluation Step Complete (output: {output_dir}) ---")
 

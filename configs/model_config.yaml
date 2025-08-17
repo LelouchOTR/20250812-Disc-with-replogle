@@ -30,7 +30,7 @@ training:
   weight_decay: 1e-5                     # L2 regularization weight decay
 
   # Training schedule
-  epochs: 15                          # Maximum number of training epochs
+  epochs: 10                          # Maximum number of training epochs
   warmup_epochs: 10                      # Number of warmup epochs
 
   # Learning rate scheduling

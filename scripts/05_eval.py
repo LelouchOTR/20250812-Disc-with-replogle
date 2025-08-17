@@ -220,12 +220,12 @@ class ModelEvaluator:
         self.metrics['perturbation_effects'] = perturbation_effects
         logger.info(f"Computed perturbation effects for {len(perturbation_effects)} guides")
 
-    def generate_visualization(self):
+    def generate_visualization(self, umap_neighbors: int, umap_min_dist: float):
         logger.info("Generating visualization...")
 
-        logger.info("Generating enhanced UMAP visualization...")
-        sc.pp.neighbors(self.adata_test, use_rep='X_latent', n_neighbors=15)
-        sc.tl.umap(self.adata_test)
+        logger.info(f"Generating enhanced UMAP visualization with n_neighbors={umap_neighbors} and min_dist={umap_min_dist}...")
+        sc.pp.neighbors(self.adata_test, use_rep='X_latent', n_neighbors=umap_neighbors)
+        sc.tl.umap(self.adata_test, min_dist=umap_min_dist)
 
         umap_x = self.adata_test.obsm['X_umap'][:, 0]
         umap_y = self.adata_test.obsm['X_umap'][:, 1]
@@ -404,13 +404,13 @@ class ModelEvaluator:
 
         logger.info(f"Saved evaluation report to {report_path}")
 
-    def evaluate(self, model_path: Path, data_path: Path, graph_dir: Path):
+    def evaluate(self, model_path: Path, data_path: Path, graph_dir: Path, umap_neighbors: int, umap_min_dist: float):
         logger.info("Starting model evaluation...")
         self.load_model_and_data(model_path, data_path, graph_dir)
         self.compute_latent_embeddings()
         self.compute_reconstruction_metrics()
         self.compute_perturbation_metrics()
-        self.generate_visualization()
+        self.generate_visualization(umap_neighbors, umap_min_dist)
         self.generate_report()
         logger.info("Evaluation complete.")
 
@@ -429,6 +429,8 @@ def main():
                         help="Log directory")
     parser.add_argument("--device", type=str, help="Device to use (cuda/cpu)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
+    parser.add_argument("--umap-neighbors", type=int, default=15, help="Number of neighbors for UMAP")
+    parser.add_argument("--umap-min-dist", type=float, default=0.1, help="Minimum distance for UMAP")
 
     args = parser.parse_args()
     
@@ -456,7 +458,13 @@ def main():
     config = load_config(args.config)
 
     evaluator = ModelEvaluator(config, Path(args.output_dir), Path(args.log_dir), device)
-    evaluator.evaluate(Path(args.model_path), Path(args.data_path), Path(args.graph_dir) if args.graph_dir else None)
+    evaluator.evaluate(
+        Path(args.model_path), 
+        Path(args.data_path), 
+        Path(args.graph_dir) if args.graph_dir else None,
+        args.umap_neighbors,
+        args.umap_min_dist
+    )
 
 
 if __name__ == "__main__":
