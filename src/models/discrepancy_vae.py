@@ -109,27 +109,33 @@ class GraphEncoder(nn.Module):
             Tuple of (mu, logvar, gene_embeddings) tensors
         """
         batch_size, num_genes = x.shape
-        x_reshaped = x.view(-1, 1)  # [batch_size * num_genes, 1]
+        
+        # Reshape for GCN to treat each gene as a node with 1 feature
+        # Shape becomes [batch_size, num_genes, 1]
+        x_reshaped = x.unsqueeze(-1)
 
-        # Create a batch vector to handle disjoint graphs
-        batch = torch.arange(batch_size, device=x.device).repeat_interleave(num_genes)
-
-        # Adjust edge_index for the batch
-        edge_index_batch = edge_index.repeat(1, batch_size) + torch.arange(batch_size, device=x.device).repeat_interleave(edge_index.size(1)) * num_genes
-
-        # Apply graph convolutions
-        h = self.conv1(x_reshaped, edge_index_batch)
-        h = self.activation(h)
-        gene_embeddings = self.conv2(h, edge_index_batch)
+        # Apply graph convolutions to each sample in the batch
+        # The GCNConv layer can handle batch dimension if the input is (batch_size, num_nodes, num_features)
+        # However, torch_geometric's GCNConv expects (num_nodes, num_features).
+        # We process each item in the batch individually.
+        
+        gene_embeddings_list = []
+        for i in range(batch_size):
+            h = self.conv1(x_reshaped[i], edge_index)
+            h = self.activation(h)
+            gene_embeddings = self.conv2(h, edge_index)
+            gene_embeddings_list.append(gene_embeddings)
+            
+        gene_embeddings_batch = torch.stack(gene_embeddings_list, dim=0) # [batch_size, num_genes, hidden_dim]
 
         # Pool features across genes for each graph in the batch
-        pooled_output = global_mean_pool(self.activation(gene_embeddings), batch)  # [batch_size, hidden_dims[1]]
+        pooled_output = torch.mean(self.activation(gene_embeddings_batch), dim=1) # [batch_size, hidden_dims[1]]
 
         # Latent space parameters
         mu = self.mu_layer(pooled_output)
         logvar = self.logvar_layer(pooled_output)
 
-        return mu, logvar, gene_embeddings.view(batch_size, num_genes, -1)
+        return mu, logvar, gene_embeddings_batch
 
 
 class Decoder(nn.Module):
@@ -572,7 +578,7 @@ class DiscrepancyVAE(nn.Module):
         """
         self.eval()
         with torch.no_grad():
-            mu, logvar = self.encode(x)
+            mu, _, _ = self.encode(x)
             # Use mean for deterministic representation
             return mu
     
