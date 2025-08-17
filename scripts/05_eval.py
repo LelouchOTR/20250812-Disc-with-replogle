@@ -24,6 +24,7 @@ import umap
 import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm import tqdm
+from torch.utils.data import TensorDataset, DataLoader
 
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
@@ -57,36 +58,114 @@ class ModelEvaluator:
         self.adata_test = None
         self.latent_embeddings = None
         self.metrics = {}
+        self.adjacency_matrix = None
+        self.node_mapping = None
 
         logger.info(f"Initialized ModelEvaluator with output dir: {self.output_dir}")
 
-    def load_model_and_data(self, model_path: Path, data_path: Path):
-        logger.info(f"Loading model from {model_path}")
-        if not model_path.exists():
-            raise EvaluationError(f"Model file not found: {model_path}")
+    def load_graph(self, graph_dir: Path):
+        if not graph_dir or not graph_dir.exists():
+            logger.warning("Graph directory not specified or does not exist. Proceeding without graph.")
+            self.adjacency_matrix = None
+            self.node_mapping = None
+            return
 
-        self.model, _ = DiscrepancyVAE.load_checkpoint(model_path, device=self.device)
-        self.model.eval()
+        adj_file = graph_dir / 'adjacency_matrix.npz'
+        nodes_file = graph_dir / 'node_mapping.json'
 
+        if adj_file.exists() and nodes_file.exists():
+            logger.info("Loading gene adjacency graph...")
+            self.adjacency_matrix = sparse.load_npz(adj_file)
+            with open(nodes_file, 'r') as f:
+                self.node_mapping = json.load(f)
+            logger.info(f"Loaded adjacency matrix: {self.adjacency_matrix.shape}")
+        else:
+            logger.warning(f"Graph files not found in {graph_dir}, proceeding without graph")
+            self.adjacency_matrix = None
+            self.node_mapping = None
+
+    def _harmonize_genes(self):
+        if self.adjacency_matrix is None or self.node_mapping is None:
+            logger.info("No graph specified, skipping gene harmonization.")
+            return
+
+        logger.info("Harmonizing genes between expression data and graph...")
+
+        graph_genes = list(self.node_mapping.values())
+        data_genes = self.adata_test.var_names.tolist()
+
+        common_genes = sorted(list(set(graph_genes) & set(data_genes)))
+
+        if not common_genes:
+            raise EvaluationError("No common genes found between expression data and graph.")
+
+        logger.info(f"Found {len(common_genes)} common genes.")
+
+        # Filter AnnData objects
+        self.adata_test = self.adata_test[:, common_genes].copy()
+
+        # Filter adjacency matrix
+        graph_gene_to_idx = {gene: i for i, gene in enumerate(graph_genes)}
+        common_gene_indices = [graph_gene_to_idx[gene] for gene in common_genes]
+        
+        self.adjacency_matrix = self.adjacency_matrix[common_gene_indices, :][:, common_gene_indices]
+
+        # Convert to torch sparse tensor
+        coo = self.adjacency_matrix.tocoo()
+        indices = torch.from_numpy(np.vstack((coo.row, coo.col))).long()
+        values = torch.from_numpy(coo.data).float()
+        shape = torch.Size(coo.shape)
+        self.adjacency_matrix = torch.sparse_coo_tensor(indices, values, shape).to(self.device)
+
+        logger.info(f"Re-created data loaders with {len(common_genes)} harmonized genes.")
+        logger.info(f"Final adjacency matrix shape: {self.adjacency_matrix.shape}")
+
+    def load_model_and_data(self, model_path: Path, data_path: Path, graph_dir: Path):
         logger.info(f"Loading test data from {data_path}")
         if not data_path.exists():
             raise EvaluationError(f"Test data file not found: {data_path}")
 
         self.adata_test = ad.read_h5ad(data_path)
         logger.info(f"Loaded test data: {self.adata_test.shape}")
+
+        self.load_graph(graph_dir)
+        self._harmonize_genes()
+
+        logger.info(f"Loading model from {model_path}")
+        if not model_path.exists():
+            raise EvaluationError(f"Model file not found: {model_path}")
+
+        self.model, _ = DiscrepancyVAE.load_checkpoint(
+            model_path, 
+            device=self.device, 
+            adjacency_matrix=self.adjacency_matrix
+        )
+        self.model.eval()
+
         self.X_data_type = type(self.adata_test.X)
 
     def compute_latent_embeddings(self):
         logger.info("Computing latent embeddings...")
 
         if sparse.issparse(self.adata_test.X):
-            X_test = torch.from_numpy(self.adata_test.X.toarray())
+            X_test_np = self.adata_test.X.toarray()
         else:
-            X_test = torch.from_numpy(self.adata_test.X)
-        X_test = X_test.float().to(self.device)
+            X_test_np = self.adata_test.X
+        
+        X_test = torch.from_numpy(X_test_np).float()
 
+        batch_size = self.config.get('training', {}).get('batch_size', 128)
+        eval_dataset = TensorDataset(X_test)
+        eval_loader = DataLoader(eval_dataset, batch_size=batch_size, shuffle=False)
+
+        latent_embeddings_list = []
         with torch.no_grad():
-            self.latent_embeddings = self.model.get_latent_representation(X_test).cpu().numpy()
+            for (batch_X,) in tqdm(eval_loader, desc="Computing latent embeddings"):
+                batch_X = batch_X.to(self.device)
+                latent_batch = self.model.get_latent_representation(batch_X)
+                latent_embeddings_list.append(latent_batch.cpu().numpy())
+
+        self.latent_embeddings = np.vstack(latent_embeddings_list)
 
         self.adata_test.obsm['X_latent'] = self.latent_embeddings
         logger.info(f"Computed latent embeddings: {self.latent_embeddings.shape}")
@@ -95,17 +174,26 @@ class ModelEvaluator:
         logger.info("Computing reconstruction metrics...")
 
         if sparse.issparse(self.adata_test.X):
-            X_true = self.adata_test.X.toarray()
+            X_true_np = self.adata_test.X.toarray()
         else:
-            X_true = self.adata_test.X
+            X_true_np = self.adata_test.X
 
-        X_test = torch.from_numpy(X_true).float().to(self.device)
+        X_true = torch.from_numpy(X_true_np).float()
 
+        batch_size = self.config.get('training', {}).get('batch_size', 128)
+        eval_dataset = TensorDataset(X_true)
+        eval_loader = DataLoader(eval_dataset, batch_size=batch_size, shuffle=False)
+
+        recon_list = []
         with torch.no_grad():
-            model_output = self.model(X_test)
-            X_recon = model_output['x_recon'].cpu().numpy()
+            for (batch_X,) in tqdm(eval_loader, desc="Computing reconstructions"):
+                batch_X = batch_X.to(self.device)
+                model_output = self.model(batch_X)
+                recon_list.append(model_output['x_recon'].cpu().numpy())
 
-        mse = mean_squared_error(X_true, X_recon)
+        X_recon = np.vstack(recon_list)
+
+        mse = mean_squared_error(X_true_np, X_recon)
         self.metrics['reconstruction_mse'] = mse
         logger.info(f"Reconstruction MSE: {mse:.4f}")
 
@@ -239,14 +327,27 @@ class ModelEvaluator:
 
         logger.info("Generating reconstruction quality plot...")
         if sparse.issparse(self.adata_test.X):
-            X_test = self.adata_test.X.toarray()
+            X_test_np = self.adata_test.X.toarray()
         else:
-            X_test = self.adata_test.X
+            X_test_np = self.adata_test.X
+
+        X_test = torch.from_numpy(X_test_np).float()
+
+        batch_size = self.config.get('training', {}).get('batch_size', 128)
+        eval_dataset = TensorDataset(X_test)
+        eval_loader = DataLoader(eval_dataset, batch_size=batch_size, shuffle=False)
+
+        recon_list = []
         with torch.no_grad():
-            X_recon = self.model(torch.from_numpy(X_test).float().to(self.device))['x_recon'].cpu().numpy()
+            for (batch_X,) in tqdm(eval_loader, desc="Generating reconstructions for plot"):
+                batch_X = batch_X.to(self.device)
+                model_output = self.model(batch_X)
+                recon_list.append(model_output['x_recon'].cpu().numpy())
+
+        X_recon = np.vstack(recon_list)
 
         fig, ax = plt.subplots(figsize=(8, 8))
-        ax.scatter(X_test.flatten(), X_recon.flatten(), alpha=0.1, s=1)
+        ax.scatter(X_test_np.flatten(), X_recon.flatten(), alpha=0.1, s=1)
         ax.set_xlabel("Original Expression")
         ax.set_ylabel("Reconstructed Expression")
         ax.set_title("Reconstruction Quality")
@@ -303,9 +404,9 @@ class ModelEvaluator:
 
         logger.info(f"Saved evaluation report to {report_path}")
 
-    def evaluate(self, model_path: Path, data_path: Path):
+    def evaluate(self, model_path: Path, data_path: Path, graph_dir: Path):
         logger.info("Starting model evaluation...")
-        self.load_model_and_data(model_path, data_path)
+        self.load_model_and_data(model_path, data_path, graph_dir)
         self.compute_latent_embeddings()
         self.compute_reconstruction_metrics()
         self.compute_perturbation_metrics()
@@ -321,6 +422,7 @@ def main():
                         default="/data/gidb/shared/results/tmp/replogle/models/best_model.pth",
                         help="Path to the trained model checkpoint")
     parser.add_argument("--data-path", type=str, required=True, help="Path to the test data file (h5ad)")
+    parser.add_argument("--graph-dir", type=str, help="Gene adjacency graph directory")
     parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/evaluation",
                         help="Output directory")
     parser.add_argument("--log-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/logs",
@@ -354,7 +456,7 @@ def main():
     config = load_config(args.config)
 
     evaluator = ModelEvaluator(config, Path(args.output_dir), Path(args.log_dir), device)
-    evaluator.evaluate(Path(args.model_path), Path(args.data_path))
+    evaluator.evaluate(Path(args.model_path), Path(args.data_path), Path(args.graph_dir) if args.graph_dir else None)
 
 
 if __name__ == "__main__":

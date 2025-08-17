@@ -64,14 +64,17 @@ class GraphEncoder(nn.Module):
         self.hidden_dims = hidden_dims
         self.latent_dim = latent_dim
         
-        if activation == 'relu':
-            self.activation = nn.ReLU()
-        elif activation == 'elu':
-            self.activation = nn.ELU()
-        elif activation == 'leaky_relu':
-            self.activation = nn.LeakyReLU(0.2)
+        if isinstance(activation, str):
+            if activation == 'relu':
+                self.activation = nn.ReLU()
+            elif activation == 'elu':
+                self.activation = nn.ELU()
+            elif activation == 'leaky_relu':
+                self.activation = nn.LeakyReLU(0.2)
+            else:
+                raise ValueError(f"Unsupported activation: {activation}")
         else:
-            raise ValueError(f"Unsupported activation: {activation}")
+            self.activation = activation
 
         self.conv1 = GCNConv(1, hidden_dims[0])
         self.conv2 = GCNConv(hidden_dims[0], hidden_dims[1])
@@ -89,6 +92,10 @@ class GraphEncoder(nn.Module):
                 nn.init.xavier_uniform_(module.weight)
                 if module.bias is not None:
                     nn.init.zeros_(module.bias)
+            elif isinstance(module, GCNConv):
+                nn.init.xavier_uniform_(module.lin.weight)
+                if module.bias is not None:
+                    nn.init.zeros_(module.bias)
 
     def forward(self, x: torch.Tensor, edge_index: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
@@ -102,39 +109,27 @@ class GraphEncoder(nn.Module):
             Tuple of (mu, logvar, gene_embeddings) tensors
         """
         batch_size, num_genes = x.shape
+        x_reshaped = x.view(-1, 1)  # [batch_size * num_genes, 1]
 
-        # Process each sample in the batch individually to avoid large tensors
-        batch_mu = []
-        batch_logvar = []
-        batch_gene_embeddings = []
+        # Create a batch vector to handle disjoint graphs
+        batch = torch.arange(batch_size, device=x.device).repeat_interleave(num_genes)
 
-        for i in range(batch_size):
-            # Get the features for the current sample (cell)
-            x_sample = x[i].unsqueeze(-1)  # Shape: [num_genes, 1]
+        # Adjust edge_index for the batch
+        edge_index_batch = edge_index.repeat(1, batch_size) + torch.arange(batch_size, device=x.device).repeat_interleave(edge_index.size(1)) * num_genes
 
-            # Apply graph convolutions
-            h = self.conv1(x_sample, edge_index)
-            h = self.activation(h)
-            h = self.conv2(h, edge_index)
-            gene_embeddings = self.activation(h)  # Shape: [num_genes, hidden_dims[1]]
+        # Apply graph convolutions
+        h = self.conv1(x_reshaped, edge_index_batch)
+        h = self.activation(h)
+        gene_embeddings = self.conv2(h, edge_index_batch)
 
-            # Pool features across genes
-            pooled_output = torch.mean(gene_embeddings, dim=0) # Shape: [hidden_dims[1]]
+        # Pool features across genes for each graph in the batch
+        pooled_output = global_mean_pool(self.activation(gene_embeddings), batch)  # [batch_size, hidden_dims[1]]
 
-            # Latent space parameters
-            mu = self.mu_layer(pooled_output)
-            logvar = self.logvar_layer(pooled_output)
+        # Latent space parameters
+        mu = self.mu_layer(pooled_output)
+        logvar = self.logvar_layer(pooled_output)
 
-            batch_mu.append(mu)
-            batch_logvar.append(logvar)
-            batch_gene_embeddings.append(gene_embeddings)
-
-        # Stack results into tensors
-        mu = torch.stack(batch_mu)
-        logvar = torch.stack(batch_logvar)
-        gene_embeddings_reshaped = torch.stack(batch_gene_embeddings)
-
-        return mu, logvar, gene_embeddings_reshaped
+        return mu, logvar, gene_embeddings.view(batch_size, num_genes, -1)
 
 
 class Decoder(nn.Module):
@@ -168,24 +163,30 @@ class Decoder(nn.Module):
         self.batch_norm = batch_norm
         
         # Choose activation function
-        if activation == 'relu':
-            self.activation = nn.ReLU()
-        elif activation == 'elu':
-            self.activation = nn.ELU()
-        elif activation == 'leaky_relu':
-            self.activation = nn.LeakyReLU(0.2)
+        if isinstance(activation, str):
+            if activation == 'relu':
+                self.activation = nn.ReLU()
+            elif activation == 'elu':
+                self.activation = nn.ELU()
+            elif activation == 'leaky_relu':
+                self.activation = nn.LeakyReLU(0.2)
+            else:
+                raise ValueError(f"Unsupported activation: {activation}")
         else:
-            raise ValueError(f"Unsupported activation: {activation}")
+            self.activation = activation
         
         # Choose output activation
-        if output_activation == 'linear':
-            self.output_activation = nn.Identity()
-        elif output_activation == 'sigmoid':
-            self.output_activation = nn.Sigmoid()
-        elif output_activation == 'softplus':
-            self.output_activation = nn.Softplus()
+        if isinstance(output_activation, str):
+            if output_activation == 'linear':
+                self.output_activation = nn.Identity()
+            elif output_activation == 'sigmoid':
+                self.output_activation = nn.Sigmoid()
+            elif output_activation == 'softplus':
+                self.output_activation = nn.Softplus()
+            else:
+                raise ValueError(f"Unsupported output activation: {output_activation}")
         else:
-            raise ValueError(f"Unsupported output activation: {output_activation}")
+            self.output_activation = output_activation
         
         # Build decoder layers
         layers = []
@@ -262,8 +263,8 @@ class DiscrepancyVAE(nn.Module):
         self.hidden_dims = model_params.get('hidden_dims', [512, 256])
         self.dropout_rate = model_params.get('dropout_rate', 0.1)
         self.batch_norm = model_params.get('batch_norm', True)
-        self.activation = model_params.get('activation', 'relu')
-        self.output_activation = model_params.get('output_activation', 'linear')
+        activation = model_params.get('activation', 'relu')
+        output_activation = model_params.get('output_activation', 'linear')
         
         # Loss parameters
         loss_params = config.get('loss_params', {})
@@ -279,7 +280,7 @@ class DiscrepancyVAE(nn.Module):
             latent_dim=self.latent_dim,
             dropout_rate=self.dropout_rate,
             batch_norm=self.batch_norm,
-            activation=self.activation
+            activation=activation
         )
         
         # Decoder hidden dims are reversed
@@ -290,8 +291,8 @@ class DiscrepancyVAE(nn.Module):
             output_dim=input_dim,
             dropout_rate=self.dropout_rate,
             batch_norm=self.batch_norm,
-            activation=self.activation,
-            output_activation=self.output_activation
+            activation=activation,
+            output_activation=output_activation
         )
         
         if self.adjacency_matrix is not None:
@@ -309,6 +310,13 @@ class DiscrepancyVAE(nn.Module):
         self.register_buffer('edge_index', edge_index)
 
         logger.info(f"Initialized DiscrepancyVAE with {self._count_parameters()} parameters")
+
+    def to(self, device, *args, **kwargs):
+        super().to(device, *args, **kwargs)
+        self.edge_index = self.edge_index.to(device)
+        if self.adjacency_matrix is not None:
+            self.adjacency_matrix = self.adjacency_matrix.to(device)
+        return self
     
     def _count_parameters(self) -> int:
         """Count total number of trainable parameters."""
@@ -396,12 +404,12 @@ class DiscrepancyVAE(nn.Module):
             Reconstruction loss tensor
         """
         if self.reconstruction_loss_type == 'mse':
-            return F.mse_loss(x_recon, x, reduction='sum')
+            return F.mse_loss(x_recon, x, reduction='mean')
         elif self.reconstruction_loss_type == 'bce':
-            return F.binary_cross_entropy(x_recon, x, reduction='sum')
+            return F.binary_cross_entropy(x_recon, x, reduction='mean')
         elif self.reconstruction_loss_type == 'poisson':
             # Poisson loss for count data
-            return torch.sum(x_recon - x * torch.log(x_recon + 1e-8))
+            return F.poisson_nll_loss(x_recon, x, log_input=False, reduction='mean')
         else:
             raise ValueError(f"Unsupported reconstruction loss: {self.reconstruction_loss_type}")
     
@@ -417,7 +425,7 @@ class DiscrepancyVAE(nn.Module):
             KL divergence loss tensor
         """
         # KL divergence between q(z|x) and p(z) = N(0, I)
-        kl_loss = -0.5 * torch.sum(1 + logvar - mu.pow(2) - logvar.exp())
+        kl_loss = -0.5 * torch.mean(1 + logvar - mu.pow(2) - logvar.exp())
         return kl_loss
 
     def compute_graph_laplacian_regularization(self, z_genes: torch.Tensor) -> torch.Tensor:
@@ -431,28 +439,25 @@ class DiscrepancyVAE(nn.Module):
 
         edge_index = self.edge_index
         src_nodes, dst_nodes = edge_index[0], edge_index[1]
-        num_edges = edge_index.shape[1]
 
-        batch_size = z_genes.shape[0]
-        total_graph_reg = 0.0
+        batch_size, num_nodes, num_features = z_genes.shape
         
-        edge_chunk_size = 100000 # Process 100k edges at a time
+        # Reshape z_genes to be [batch_size * num_nodes, num_features]
+        z_genes_reshaped = z_genes.view(-1, num_features)
 
-        for i in range(batch_size):
-            z_sample = z_genes[i] # [num_nodes, num_features]
-            
-            for j in range(0, num_edges, edge_chunk_size):
-                chunk_end = min(j + edge_chunk_size, num_edges)
-                src_chunk = src_nodes[j:chunk_end]
-                dst_chunk = dst_nodes[j:chunk_end]
+        # Adjust indices for the batch
+        src_nodes_batch = src_nodes.repeat(batch_size) + torch.arange(batch_size, device=z_genes.device).repeat_interleave(len(src_nodes)) * num_nodes
+        dst_nodes_batch = dst_nodes.repeat(batch_size) + torch.arange(batch_size, device=z_genes.device).repeat_interleave(len(dst_nodes)) * num_nodes
 
-                z_src = z_sample[src_chunk, :] # [chunk_size, num_features]
-                z_dst = z_sample[dst_chunk, :] # [chunk_size, num_features]
-                
-                dist_sq = torch.sum((z_src - z_dst)**2, dim=1) # [chunk_size]
-                total_graph_reg += torch.sum(dist_sq)
+        # Select source and destination nodes for all samples in the batch at once
+        z_src = z_genes_reshaped[src_nodes_batch, :]
+        z_dst = z_genes_reshaped[dst_nodes_batch, :]
 
-        graph_reg = total_graph_reg / batch_size
+        # Compute squared distance
+        dist_sq = torch.sum((z_src - z_dst)**2, dim=1)
+
+        # Sum over all edges and average over the batch
+        graph_reg = torch.sum(dist_sq) / batch_size
         
         return graph_reg
 
@@ -475,6 +480,10 @@ class DiscrepancyVAE(nn.Module):
         # Compute discrepancy for each perturbation
         discrepancy_loss = 0.0
         unique_perturbations = torch.unique(perturbation_labels)
+        n_perturbations = len(unique_perturbations)
+
+        if n_perturbations == 0:
+            return torch.tensor(0.0, device=control_z.device)
         
         for pert_label in unique_perturbations:
             # Get cells with this perturbation
@@ -489,7 +498,7 @@ class DiscrepancyVAE(nn.Module):
                 discrepancy = torch.sum((pert_mean - control_mean) ** 2)
                 discrepancy_loss += discrepancy
         
-        return discrepancy_loss
+        return discrepancy_loss / n_perturbations
     
     def compute_loss(self, x: torch.Tensor, model_output: Dict[str, torch.Tensor],
                     is_control: torch.Tensor, perturbation_labels: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
@@ -624,13 +633,14 @@ class DiscrepancyVAE(nn.Module):
         logger.info(f"Saved checkpoint to {filepath.name}")
     
     @classmethod
-    def load_checkpoint(cls, filepath: Union[str, Path], device: torch.device = None) -> Tuple['DiscrepancyVAE', Dict]:
+    def load_checkpoint(cls, filepath: Union[str, Path], device: torch.device = None, adjacency_matrix: Optional[torch.Tensor] = None) -> Tuple['DiscrepancyVAE', Dict]:
         """
         Load model from checkpoint.
         
         Args:
             filepath: Path to checkpoint file
             device: Device to load model on
+            adjacency_matrix: Optional adjacency matrix for graph-based regularization.
             
         Returns:
             Tuple of (model, checkpoint_info)
@@ -638,12 +648,16 @@ class DiscrepancyVAE(nn.Module):
         if device is None:
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         
+        if adjacency_matrix is not None:
+            adjacency_matrix = adjacency_matrix.to(device)
+
         checkpoint = torch.load(filepath, map_location=device)
         
         # Create model
         model = cls(
             input_dim=checkpoint['input_dim'],
-            config=checkpoint['model_config']
+            config=checkpoint['model_config'],
+            adjacency_matrix=adjacency_matrix
         )
         
         # Load state dict
