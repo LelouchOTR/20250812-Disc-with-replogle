@@ -285,6 +285,8 @@ class DiscrepancyVAE(nn.Module):
         self.discrepancy_weight = loss_params.get('discrepancy_weight', 1.0)
         self.reconstruction_loss_type = loss_params.get('reconstruction_loss', 'mse')
         self.graph_reg_weight = loss_params.get('graph_reg_weight', 0.1)
+        self.discrepancy_loss_type = loss_params.get('discrepancy_loss_type', 'l2_mean')
+        self.mmd_gamma = loss_params.get('mmd_gamma', 1.0)
 
         # Build encoder and decoder
         self.encoder = GraphEncoder(
@@ -477,6 +479,24 @@ class DiscrepancyVAE(nn.Module):
         
         return graph_reg
 
+    def _rbf_kernel(self, x, y, gamma):
+        """Compute RBF kernel between x and y."""
+        dist_sq = torch.cdist(x, y, p=2).pow(2)
+        return torch.exp(-gamma * dist_sq)
+
+    def _mmd_loss(self, x, y, gamma):
+        """Compute MMD loss between x and y."""
+        if x.size(0) == 0 or y.size(0) == 0:
+            return torch.tensor(0.0, device=x.device)
+        
+        xx = self._rbf_kernel(x, x, gamma)
+        yy = self._rbf_kernel(y, y, gamma)
+        xy = self._rbf_kernel(x, y, gamma)
+
+        # Use biased MMD estimator
+        mmd = xx.mean() + yy.mean() - 2 * xy.mean()
+        return mmd
+
     def compute_discrepancy_loss(self, control_z: torch.Tensor, perturbed_z: torch.Tensor,
                                perturbation_labels: torch.Tensor) -> torch.Tensor:
         """
@@ -490,30 +510,31 @@ class DiscrepancyVAE(nn.Module):
         Returns:
             Discrepancy loss tensor
         """
-        # Compute mean control representation
-        control_mean = torch.mean(control_z, dim=0, keepdim=True)  # [1, latent_dim]
-        
-        # Compute discrepancy for each perturbation
-        discrepancy_loss = 0.0
         unique_perturbations = torch.unique(perturbation_labels)
         n_perturbations = len(unique_perturbations)
 
-        if n_perturbations == 0:
+        if n_perturbations == 0 or control_z.size(0) == 0:
             return torch.tensor(0.0, device=control_z.device)
+
+        discrepancy_loss = 0.0
         
         for pert_label in unique_perturbations:
-            # Get cells with this perturbation
             pert_mask = perturbation_labels == pert_label
-            pert_z = perturbed_z[pert_mask]  # [n_pert_cells, latent_dim]
+            pert_z = perturbed_z[pert_mask]
             
             if pert_z.size(0) > 0:
-                # Compute mean perturbation representation
-                pert_mean = torch.mean(pert_z, dim=0, keepdim=True)  # [1, latent_dim]
-                
-                # Compute discrepancy (L2 distance)
-                discrepancy = torch.sum((pert_mean - control_mean) ** 2)
-                discrepancy_loss += discrepancy
-        
+                if self.discrepancy_loss_type == 'l2_mean':
+                    control_mean = torch.mean(control_z, dim=0, keepdim=True)
+                    pert_mean = torch.mean(pert_z, dim=0, keepdim=True)
+                    discrepancy = torch.sum((pert_mean - control_mean) ** 2)
+                    discrepancy_loss += discrepancy
+                elif self.discrepancy_loss_type == 'mmd':
+                    # MMD loss is maximized, so we negate it for minimization
+                    discrepancy = -self._mmd_loss(control_z, pert_z, self.mmd_gamma)
+                    discrepancy_loss += discrepancy
+                else:
+                    raise ValueError(f"Unsupported discrepancy loss type: {self.discrepancy_loss_type}")
+
         return discrepancy_loss / n_perturbations
     
     def compute_loss(self, x: torch.Tensor, model_output: Dict[str, torch.Tensor],

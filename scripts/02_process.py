@@ -23,6 +23,7 @@ import anndata as ad
 from scipy import sparse
 from sklearn.preprocessing import StandardScaler
 from sklearn.feature_selection import VarianceThreshold
+import joblib
 
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
@@ -425,6 +426,38 @@ class SingleCellDataProcessor:
 
         return train_adata, val_adata, test_adata
 
+    def scale_data(self, train_adata: ad.AnnData, val_adata: ad.AnnData, test_adata: ad.AnnData) -> Tuple[ad.AnnData, ad.AnnData, ad.AnnData]:
+        logger.info("Scaling data using StandardScaler (Z-score normalization)...")
+
+        # Ensure data is in a format that StandardScaler can handle (e.g., CSR for sparse)
+        if sparse.issparse(train_adata.X) and not isinstance(train_adata.X, sparse.csr_matrix):
+            train_adata.X = train_adata.X.tocsr()
+        if sparse.issparse(val_adata.X) and not isinstance(val_adata.X, sparse.csr_matrix):
+            val_adata.X = val_adata.X.tocsr()
+        if sparse.issparse(test_adata.X) and not isinstance(test_adata.X, sparse.csr_matrix):
+            test_adata.X = test_adata.X.tocsr()
+
+        # Initialize StandardScaler
+        # with_mean=False is recommended for sparse data to avoid densification
+        scaler = StandardScaler(with_mean=not sparse.issparse(train_adata.X))
+
+        # Fit on training data and transform all splits
+        logger.info("Fitting scaler on training data...")
+        train_adata.X = scaler.fit_transform(train_adata.X)
+
+        logger.info("Transforming validation data...")
+        val_adata.X = scaler.transform(val_adata.X)
+
+        logger.info("Transforming test data...")
+        test_adata.X = scaler.transform(test_adata.X)
+
+        # Save the scaler
+        scaler_path = self.output_dir / "scaler.joblib"
+        joblib.dump(scaler, scaler_path)
+        logger.info(f"Saved StandardScaler to {scaler_path}")
+
+        return train_adata, val_adata, test_adata
+
     def save_processed_data(self, adata: ad.AnnData, train_adata: ad.AnnData,
                             val_adata: ad.AnnData, test_adata: ad.AnnData) -> None:
         logger.info("Saving processed data...")
@@ -526,6 +559,8 @@ def main():
             adata = processor.harmonize_genes_with_graph(adata, Path(args.graph_node_mapping))
 
         train_adata, val_adata, test_adata = processor.split_data(adata)
+
+        train_adata, val_adata, test_adata = processor.scale_data(train_adata, val_adata, test_adata)
 
         processor.save_processed_data(adata, train_adata, val_adata, test_adata)
 

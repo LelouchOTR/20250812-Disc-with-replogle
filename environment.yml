@@ -43,6 +43,7 @@ dependencies:
   - requests
   - jinja2
   - tqdm
+  - statsmodels
 
   # Development
   - pytest
