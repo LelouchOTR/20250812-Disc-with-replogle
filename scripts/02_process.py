@@ -297,7 +297,7 @@ class SingleCellDataProcessor:
         with open(graph_node_mapping_path, 'r') as f:
             node_mapping = json.load(f)
         
-        graph_genes = node_mapping.keys()
+        graph_genes = node_mapping.values()
         graph_genes_set = set(graph_genes)
         original_genes_set = set(adata.var_names)
 
@@ -514,9 +514,6 @@ def main():
 
         adata = processor.apply_quality_control(adata)
 
-        if args.graph_node_mapping:
-            adata = processor.harmonize_genes_with_graph(adata, Path(args.graph_node_mapping))
-
         adata = processor.assign_guides(adata)
 
         adata = processor.normalize_data(adata)
@@ -524,6 +521,9 @@ def main():
         adata = processor.select_features(adata)
 
         adata = processor.map_gene_ids(adata)
+
+        if args.graph_node_mapping:
+            adata = processor.harmonize_genes_with_graph(adata, Path(args.graph_node_mapping))
 
         train_adata, val_adata, test_adata = processor.split_data(adata)
 
