@@ -14,7 +14,18 @@ Think of the model as a **"smart biological detective"** that learns about your 
 
 *   **🔬 The Perturbation Effect:** It then figures out how each genetic perturbation "moves" a cell on this map. It learns a "discrepancy vector"—an arrow pointing from the normal cell state to the perturbed state. The length and direction of the arrow tell you the strength and type of the effect.
 
-*   **🕸️ The Biological Hint:** To make the map more accurate, we give the model a "hint"—a gene-gene interaction network. This encourages the model to place genes that we know are functionally related "close" to each other in its internal logic.
+*   **🕸️ The Biological Hint (Graph Integration):** To make the map more biologically meaningful, we provide the model with a gene-gene interaction network. The model's encoder is a **Graph Convolutional Network (GCN)** that processes this graph directly. This allows the model to learn from the connections between genes, encouraging genes that are functionally related to have similar representations. A **graph Laplacian regularization** term in the loss function further reinforces this, ensuring that connected genes are mapped closely together in the latent space.
+
+## 🌐 The Gene-Gene Interaction Graph
+
+The "biological hint" given to the model is a graph representing known functional relationships between genes. Here's how it's built:
+
+1.  **Data Source:** We use the **Gene Ontology (GO)** database, a comprehensive resource of gene functions.
+2.  **Term Filtering:** We filter GO terms to select those that are most informative, based on the number of genes they annotate and their specificity.
+3.  **Similarity Calculation:** For every pair of genes, we calculate a **Jaccard similarity score** based on the GO terms they share. A high score means two genes are involved in many of the same biological processes.
+4.  **Graph Construction:** We create a network where each gene is a node. An edge is drawn between two genes if their similarity score is above a predefined threshold. This results in a graph where connected genes are likely to be functionally related.
+
+This graph is then fed into the GCN encoder of the DiscrepancyVAE, providing a strong biological prior that guides the model's learning process.
 
 ## 📊 Interpreting the Output: The UMAP Plot
 
