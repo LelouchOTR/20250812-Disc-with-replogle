@@ -11,7 +11,7 @@ import pandas as pd
 import torch
 
 # Set style
-plt.style.use('seaborn')
+plt.style.use('seaborn-v0_8-darkgrid')
 sns.set_context("paper", font_scale=1.5)
 
 class LatentSpaceVisualizer:
