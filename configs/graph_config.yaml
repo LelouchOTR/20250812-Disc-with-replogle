@@ -67,7 +67,7 @@ adjacency:
   method: "jaccard"                      # Options: "jaccard", "overlap", "cosine", "binary"
   
   # Similarity threshold for edge creation
-  threshold: 0.1                         # Minimum similarity for creating edges
+  threshold: 0.3                         # Minimum similarity for creating edges
   
   # Graph sparsity control
   max_edges_per_gene: 100               # Maximum number of edges per gene

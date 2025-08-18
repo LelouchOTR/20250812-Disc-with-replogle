@@ -4,7 +4,7 @@
 model_config:
   model_params:
     # Latent space configuration
-    latent_dim: 32                         # Dimensionality of latent space
+    latent_dim: 64                         # Dimensionality of latent space
     hidden_dims: [256, 128]                # Hidden layer dimensions for GCN encoder
 
     # Regularization
@@ -20,14 +20,14 @@ model_config:
     beta: 1.0                              # Weight for KL divergence loss
     reconstruction_loss: 'mse'
     discrepancy_weight: 0.5                # Weight for discrepancy loss between control/perturbed
-    graph_reg_weight: 0.1                  # Weight for graph Laplacian regularization
+    graph_reg_weight: 0.001                  # Weight for graph Laplacian regularization
     discrepancy_loss_type: "l2_mean"       # Discrepancy loss type: "l2_mean" or "mmd"
     mmd_gamma: 1.0                         # Gamma parameter for MMD RBF kernel (if used)
 
 # Training configuration
 training:
   # Optimization parameters
-  batch_size: 2                         # Training batch size
+  batch_size: 16                         # Training batch size
   learning_rate: 0.001                   # Initial learning rate
   weight_decay: 1e-5                     # L2 regularization weight decay
 
