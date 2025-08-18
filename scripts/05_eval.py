@@ -731,29 +731,74 @@ class ModelEvaluator:
             self.log_diagnostics(f"Error generating reconstruction quality plot: {str(e)}", 'error')
             # Continue with evaluation even if this fails
 
-        # The reconstruction quality plot is now generated in the try-except block above
-
-        logger.info("Generating perturbation effect plot...")
-        pert_effects_df = self.perturbation_results.sort_values('magnitude', ascending=False).head(20)
-
-        fig, ax = plt.subplots(figsize=(12, 8))
-        sns.barplot(x='guide', y='magnitude', data=pert_effects_df, ax=ax)
-        ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
-        ax.set_title("Top 20 Perturbation Effects (Latent Space Magnitude)")
-        ax.set_ylabel("Effect Magnitude (L2 norm)")
-        plt.savefig(self.plots_dir / "perturbation_effects.png", dpi=300, bbox_inches='tight')
-        plt.close(fig)
-
-    def generate_report(self):
-        logger.info("Generating evaluation report...")
-
-        report_path = self.output_dir / "evaluation_report.md"
+        # Generate perturbation effects plot
+        self.log_diagnostics("Generating perturbation effect plot...")
+        try:
+            if self.perturbation_results is not None and not self.perturbation_results.empty:
+                # Get top 20 perturbations by magnitude
+                pert_effects_df = self.perturbation_results.sort_values('magnitude', ascending=False).head(20)
+                
+                plt.figure(figsize=(14, 8))
+                
+                # Create color map based on significance
+                colors = ['red' if sig else 'blue' for sig in pert_effects_df['significant']]
+                
+                # Create the bar plot
+                bars = plt.bar(range(len(pert_effects_df)), 
+                              pert_effects_df['magnitude'],
+                              color=colors,
+                              alpha=0.7)
+                
+                # Add value labels on top of bars
+                for bar in bars:
+                    height = bar.get_height()
+                    plt.text(bar.get_x() + bar.get_width()/2., height,
+                            f'{height:.2f}',
+                            ha='center', va='bottom')
+                
+                # Customize the plot
+                plt.xticks(range(len(pert_effects_df)), 
+                          pert_effects_df['guide'], 
+                          rotation=90)
+                
+                # Add a horizontal line for significance threshold if available
+                if 'q_value' in pert_effects_df.columns:
+                    sig_threshold = 0.05
+                    max_effect = pert_effects_df['magnitude'].max() * 1.1
+                    plt.axhline(y=max_effect * 0.9, color='gray', linestyle='--', alpha=0.7)
+                    plt.text(len(pert_effects_df) * 0.8, max_effect * 0.92, 
+                            'Significance Threshold', color='gray')
+                
+                plt.title('Top 20 Perturbation Effects (Latent Space Magnitude)', pad=20)
+                plt.xlabel('Guide')
+                plt.ylabel('Effect Magnitude (L2 norm)')
+                plt.grid(axis='y', linestyle='--', alpha=0.7)
+                
+                # Create custom legend for significance
+                import matplotlib.patches as mpatches
+                sig_patch = mpatches.Patch(color='red', label='Significant (q < 0.05)', alpha=0.7)
+                ns_patch = mpatches.Patch(color='blue', label='Not Significant', alpha=0.7)
+                plt.legend(handles=[sig_patch, ns_patch])
+                
+                # Adjust layout and save
+                plt.tight_layout()
+                pert_plot_path = self.plots_dir / 'perturbation_effects.png'
+                plt.savefig(pert_plot_path, dpi=300, bbox_inches='tight')
+                plt.close()
+                
+                self.log_diagnostics(f"Saved perturbation effects plot to {pert_plot_path}")
+            else:
+                self.log_diagnostics("No perturbation results available for plotting", 'warning')
+                
+        except Exception as e:
+            self.log_diagnostics(f"Error generating perturbation effects plot: {str(e)}", 'error')
         
-        significant_perts = self.perturbation_results[self.perturbation_results['significant']].sort_values(
-            by='q_value', ascending=True
-        )
-
-        with open(report_path, 'w') as f:
+        # Generate control distribution plot
+        self.log_diagnostics("Generating control distribution plot...")
+        try:
+            self.plot_control_distribution()
+        except Exception as e:
+            self.log_diagnostics(f"Error generating control distribution plot: {str(e)}", 'error')
             f.write("# DiscrepancyVAE Evaluation Report\n\n")
             f.write(f"Evaluation completed on: {pd.Timestamp.now().isoformat()}\n\n")
             
@@ -791,72 +836,193 @@ class ModelEvaluator:
 
     def plot_control_distribution(self):
         """Plot the distribution of control cells in latent space."""
-        if 'is_control' not in self.adata_test.obs:
-            self.log_diagnostics("No control cells found for plotting", 'warning')
-            return
+        try:
+            if 'is_control' not in self.adata_test.obs:
+                self.log_diagnostics("No control cells found for plotting", 'warning')
+                return
+                
+            # Calculate control statistics
+            n_controls = np.sum(self.adata_test.obs['is_control'])
+            n_total = len(self.adata_test)
             
-        # Plot control vs perturbed
-        plt.figure(figsize=(12, 5))
-        
-        plt.subplot(121)
-        sc.pl.umap(self.adata_test, color='is_control', show=False, 
-                  title='Control vs Perturbed', frameon=False)
-        
-        # Plot just controls
-        plt.subplot(122)
-        controls = self.adata_test[self.adata_test.obs['is_control']].copy()
-        sc.pl.umap(controls, color='guide_identity', 
-                  title='Controls Only', frameon=False, show=False)
-        
-        plt.tight_layout()
-        plt.savefig(self.plots_dir / 'control_distribution.png', dpi=300, bbox_inches='tight')
-        plt.close()
-        
-        # Log control stats
-        n_controls = np.sum(self.adata_test.obs['is_control'])
-        n_total = len(self.adata_test)
-        self.log_diagnostics(f"Control cells: {n_controls}/{n_total} ({n_controls/n_total*100:.1f}%)")
+            # Create a figure with two subplots
+            fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+            
+            # Plot 1: Control vs Perturbed (UMAP)
+            if 'X_umap' in self.adata_test.obsm:
+                # Get UMAP coordinates
+                umap_coords = self.adata_test.obsm['X_umap']
+                
+                # Plot control cells
+                control_mask = self.adata_test.obs['is_control'].values
+                ax1.scatter(umap_coords[~control_mask, 0], umap_coords[~control_mask, 1],
+                           c='lightgray', alpha=0.5, s=10, label='Perturbed')
+                ax1.scatter(umap_coords[control_mask, 0], umap_coords[control_mask, 1],
+                           c='blue', alpha=0.7, s=15, label='Control')
+                
+                ax1.set_title(f'UMAP: Control vs Perturbed Cells\n(Controls: {n_controls}/{n_total}, {n_controls/n_total*100:.1f}%)')
+                ax1.set_xlabel('UMAP1')
+                ax1.set_ylabel('UMAP2')
+                ax1.legend()
+                ax1.grid(True, linestyle='--', alpha=0.6)
+                
+                # Plot 2: Control cell distribution (if any controls exist)
+                if n_controls > 0:
+                    control_cells = self.adata_test[control_mask].copy()
+                    
+                    # If there are guide identities, color by guide
+                    if 'guide_identity' in control_cells.obs:
+                        import seaborn as sns
+                        import matplotlib.patches as mpatches
+                        
+                        # Get unique guides and assign colors
+                        guides = control_cells.obs['guide_identity'].unique()
+                        palette = sns.color_palette('husl', len(guides))
+                        guide_colors = dict(zip(guides, palette))
+                        
+                        # Plot each guide with a different color
+                        for guide in guides:
+                            guide_mask = control_cells.obs['guide_identity'] == guide
+                            ax2.scatter(umap_coords[control_mask][guide_mask, 0],
+                                      umap_coords[control_mask][guide_mask, 1],
+                                      c=[guide_colors[guide]], label=guide,
+                                      alpha=0.7, s=15)
+                        
+                        # Create legend
+                        handles = [mpatches.Patch(color=color, label=guide) 
+                                 for guide, color in guide_colors.items()]
+                        ax2.legend(handles=handles, title='Guide Identity',
+                                 bbox_to_anchor=(1.05, 1), loc='upper left')
+                        
+                        ax2.set_title('Control Cells by Guide Identity')
+                    else:
+                        # Just plot controls without guide info
+                        ax2.scatter(umap_coords[control_mask, 0],
+                                  umap_coords[control_mask, 1],
+                                  c='blue', alpha=0.7, s=15)
+                        ax2.set_title('Control Cells')
+                    
+                    ax2.set_xlabel('UMAP1')
+                    ax2.set_ylabel('UMAP2')
+                    ax2.grid(True, linestyle='--', alpha=0.6)
+                else:
+                    ax2.text(0.5, 0.5, 'No control cells found',
+                           horizontalalignment='center',
+                           verticalalignment='center',
+                           transform=ax2.transAxes)
+                    ax2.set_xticks([])
+                    ax2.set_yticks([])
+                    
+            else:
+                # If UMAP not available, just show a message
+                ax1.text(0.5, 0.5, 'UMAP coordinates not found',
+                       horizontalalignment='center',
+                       verticalalignment='center',
+                       transform=ax1.transAxes)
+                ax1.set_xticks([])
+                ax1.set_yticks([])
+                ax2.set_visible(False)
+            
+            plt.tight_layout()
+            
+            # Save the figure
+            control_plot_path = self.plots_dir / 'control_distribution.png'
+            plt.savefig(control_plot_path, dpi=300, bbox_inches='tight')
+            plt.close(fig)
+            
+            self.log_diagnostics(f"Saved control distribution plot to {control_plot_path}")
+            self.log_diagnostics(f"Control cells: {n_controls}/{n_total} ({n_controls/n_total*100:.1f}%)")
+            
+        except Exception as e:
+            self.log_diagnostics(f"Error in plot_control_distribution: {str(e)}", 'error')
     
     def evaluate(self, model_path: Path, data_path: Path, graph_dir: Path, 
                 scaler_path: Path, umap_neighbors: int, umap_min_dist: float, 
                 n_permutations: int):
-        """Run the full evaluation pipeline with enhanced diagnostics."""
+        """
+        Run the full evaluation pipeline with enhanced diagnostics.
+        
+        Args:
+            model_path: Path to the trained model checkpoint
+            data_path: Path to the test data file (h5ad)
+            graph_dir: Directory containing gene graph information
+            scaler_path: Path to the fitted StandardScaler
+            umap_neighbors: Number of neighbors for UMAP
+            umap_min_dist: Minimum distance for UMAP
+            n_permutations: Number of permutations for significance testing
+        """
         self.log_diagnostics("===== STARTING EVALUATION PIPELINE =====")
+        start_time = time.time()
         
         try:
             # Log evaluation parameters
+            self.log_diagnostics("\n=== Evaluation Parameters ===")
             self.log_diagnostics(f"Model path: {model_path}")
             self.log_diagnostics(f"Data path: {data_path}")
             self.log_diagnostics(f"Graph dir: {graph_dir}")
+            self.log_diagnostics(f"Scaler path: {scaler_path}")
             self.log_diagnostics(f"UMAP params: n_neighbors={umap_neighbors}, min_dist={umap_min_dist}")
+            self.log_diagnostics(f"Permutations for significance testing: {n_permutations}")
+            self.log_diagnostics("\n" + "="*50 + "\n")
             
             # Run evaluation steps
-            self.log_diagnostics("Loading model and data...")
+            self.log_diagnostics("=== Step 1/6: Loading model and data...")
             self.load_model_and_data(model_path, data_path, graph_dir, scaler_path)
             
-            self.log_diagnostics("Computing latent embeddings...")
+            self.log_diagnostics("\n=== Step 2/6: Computing latent embeddings...")
             self.compute_latent_embeddings()
             
-            self.log_diagnostics("Computing reconstruction metrics...")
-            self.compute_reconstruction_metrics()
+            self.log_diagnostics("\n=== Step 3/6: Computing reconstruction metrics...")
+            rec_metrics = self.compute_reconstruction_metrics()
+            self.log_diagnostics("Reconstruction metrics:")
+            for k, v in rec_metrics.items():
+                self.log_diagnostics(f"  {k}: {v:.4f}")
             
-            self.log_diagnostics("Computing perturbation metrics...")
+            self.log_diagnostics("\n=== Step 4/6: Computing perturbation metrics...")
             self.compute_perturbation_metrics()
             
-            self.log_diagnostics(f"Computing perturbation significance with {n_permutations} permutations...")
-            self.compute_perturbation_significance(n_permutations=n_permutations)
+            self.log_diagnostics(f"\n=== Step 5/6: Computing perturbation significance with {n_permutations} permutations...")
+            sig_results = self.compute_perturbation_significance(n_permutations=n_permutations)
+            if sig_results is not None and not sig_results.empty:
+                n_sig = sum(sig_results['significant'])
+                self.log_diagnostics(f"Found {n_sig} significant perturbations at FDR < 0.05")
+                if n_sig > 0:
+                    self.log_diagnostics("Top significant perturbations:")
+                    for _, row in sig_results[sig_results['significant']].head(5).iterrows():
+                        self.log_diagnostics(f"  {row['guide']}: effect={row['magnitude']:.3f}, q={row['q_value']:.3g}")
             
-            self.log_diagnostics("Generating visualizations...")
+            self.log_diagnostics("\n=== Step 6/6: Generating visualizations and final report...")
             self.generate_visualization(umap_neighbors, umap_min_dist)
+            report_path = self.generate_report()
             
-            self.log_diagnostics("Generating report...")
-            self.generate_report()
+            # Calculate and log total runtime
+            runtime = time.time() - start_time
+            hours, remainder = divmod(runtime, 3600)
+            minutes, seconds = divmod(remainder, 60)
+            runtime_str = f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d}"
             
-            self.log_diagnostics("===== EVALUATION COMPLETED SUCCESSFULLY =====")
+            self.log_diagnostics("\n" + "="*50)
+            self.log_diagnostics(f"===== EVALUATION COMPLETED IN {runtime_str} =====")
+            self.log_diagnostics(f"Final report generated at: {report_path}")
+            self.log_diagnostics("="*50)
+            
+            return True
             
         except Exception as e:
-            self.log_diagnostics(f"EVALUATION FAILED: {str(e)}", 'error')
-            raise
+            runtime = time.time() - start_time
+            self.log_diagnostics(f"\n" + "!"*50, 'error')
+            self.log_diagnostics(f"EVALUATION FAILED AFTER {runtime:.1f} SECONDS", 'error')
+            self.log_diagnostics(f"Error: {str(e)}", 'error')
+            self.log_diagnostics("!"*50, 'error')
+            
+            # Try to generate a partial report if possible
+            try:
+                self.log_diagnostics("Attempting to generate partial report...")
+                self.generate_report()
+            except Exception as report_err:
+                self.log_diagnostics(f"Failed to generate partial report: {str(report_err)}", 'error')
+            
+            raise EvaluationError(f"Evaluation failed: {str(e)}") from e
 
 
 def main():
