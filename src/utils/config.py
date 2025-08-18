@@ -61,7 +61,13 @@ class ConfigLoader:
         if not config_name.endswith('.yaml'):
             config_name += '.yaml'
         
-        config_path = self.config_dir / config_name
+        if os.path.sep in config_name:
+            config_path = Path(config_name)
+            if not config_path.is_absolute():
+                # Resolve relative to project root, which is parent of config_dir
+                config_path = self.config_dir.parent / config_path
+        else:
+            config_path = self.config_dir / config_name
         
         if not config_path.exists():
             raise ConfigError(f"Configuration file not found: {config_path}")
