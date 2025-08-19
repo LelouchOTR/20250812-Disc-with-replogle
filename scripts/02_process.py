@@ -214,6 +214,17 @@ class SingleCellDataProcessor:
         logger.info(f"Perturbed cells: {n_perturbed_cells}")
         logger.info(f"Control guides: {control_guides}")
 
+        # Create 'condition' column for perturbation status
+        adata.obs['condition'] = adata.obs['guide_identity']
+        control_key = self.guide_config.get('control_key', 'control')
+        adata.obs.loc[adata.obs['is_control'], 'condition'] = control_key
+        logger.info(f"Created 'condition' column. Control condition set to '{control_key}'.")
+
+        # Create a mock 'cell_type' column if it doesn't exist
+        if 'cell_type' not in adata.obs.columns:
+            logger.info("No 'cell_type' column found. Creating a mock 'cell_type' column with value 'unknown'.")
+            adata.obs['cell_type'] = 'unknown'
+
         return adata
 
     def normalize_data(self, adata: ad.AnnData) -> ad.AnnData:
