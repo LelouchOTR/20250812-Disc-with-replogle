@@ -973,9 +973,9 @@ class ModelEvaluator:
             self.compute_latent_embeddings()
             
             self.log_diagnostics("\n=== Step 3/6: Computing reconstruction metrics...")
-            rec_metrics = self.compute_reconstruction_metrics()
+            self.compute_reconstruction_metrics()
             self.log_diagnostics("Reconstruction metrics:")
-            for k, v in rec_metrics.items():
+            for k, v in self.metrics.items():
                 self.log_diagnostics(f"  {k}: {v:.4f}")
             
             self.log_diagnostics("\n=== Step 4/6: Computing perturbation metrics...")
