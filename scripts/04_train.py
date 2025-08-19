@@ -41,9 +41,9 @@ sys.path.insert(0, str(project_root))
 
 from src.utils.config import load_config
 from src.utils.random_seed import set_global_seed
-from src.models.discrepancy_vae import (
-    DiscrepancyVAE, SingleCellDataset, create_data_loaders, get_model_summary
-)
+from src.models.discrepancy_vae import DiscrepancyVAE, get_model_summary
+from torch_geometric.loader import DataLoader as PyGDataLoader
+import pickle
 
 logger = logging.getLogger(__name__)
 
@@ -109,129 +109,64 @@ class ModelTrainer:
 
         logger.info(f"Initialized ModelTrainer with output dir: {output_dir}")
 
-    def load_data(self, data_dir: Path, use_raw: bool = False) -> None:
-        logger.info("Loading processed data...")
+    def load_data(self, cell_graph_path: Path) -> None:
+        logger.info(f"Loading cell graphs from {cell_graph_path}...")
 
-        data_dir = Path(data_dir)
+        if not cell_graph_path.exists():
+            raise TrainingError(f"Cell graph file not found: {cell_graph_path}")
 
-        train_file = data_dir / 'train_data.h5ad'
-        if not train_file.exists():
-            raise TrainingError(f"Training data not found: {train_file}")
+        with open(cell_graph_path, 'rb') as f:
+            all_cell_graphs = pickle.load(f)
 
-        adata_train = ad.read_h5ad(train_file)
-        logger.info(f"Loaded training data: {adata_train.shape}")
+        logger.info(f"Loaded {len(all_cell_graphs)} total cell graphs.")
 
-        val_file = data_dir / 'validation_data.h5ad'
-        alt_val_file = data_dir / 'val_data.h5ad'
+        # Split graphs into train and validation sets based on the 'split' attribute
+        train_graphs = [g for g in all_cell_graphs if g.split == 'train']
+        val_graphs = [g for g in all_cell_graphs if g.split == 'validation']
 
-        if val_file.exists():
-            adata_val = ad.read_h5ad(val_file)
-        elif alt_val_file.exists():
-            adata_val = ad.read_h5ad(alt_val_file)
-            logger.info(f"Loaded validation data (alternative filename): {adata_val.shape}")
-        else:
-            raise TrainingError(f"Validation data not found. Checked both {val_file} and {alt_val_file}")
+        if not train_graphs:
+            raise TrainingError("No training data found in cell graphs.")
+        if not val_graphs:
+            logger.warning("No validation data found in cell graphs. Validation will be skipped.")
 
-        logger.info(f"Loaded validation data: {adata_val.shape}")
+        logger.info(f"Train graphs: {len(train_graphs)}, Validation graphs: {len(val_graphs)}")
 
         num_workers = int(self.training_params.get('num_workers', 4))
-        self.train_loader, self.val_loader = create_data_loaders(
-            adata_train, adata_val,
+
+        self.train_loader = PyGDataLoader(
+            train_graphs,
             batch_size=self.batch_size,
-            num_workers=num_workers,
-            use_raw=use_raw
+            shuffle=True,
+            num_workers=num_workers
         )
 
-        self.input_dim = adata_train.n_vars
-
-        self.adata_train = adata_train
-        self.adata_val = adata_val
-
-        logger.info(f"Created data loaders - Train batches: {len(self.train_loader)}, "
-                    f"Val batches: {len(self.val_loader)}")
-
-    def load_graph(self, graph_dir: Optional[Path] = None) -> None:
-        if graph_dir is None:
-            logger.info("No graph directory specified, skipping graph loading")
-            self.adjacency_matrix = None
-            self.node_mapping = None
-            return
-
-        graph_dir = Path(graph_dir)
-        adj_file = graph_dir / 'adjacency_matrix.npz'
-        nodes_file = graph_dir / 'node_mapping.json'
-
-        if adj_file.exists() and nodes_file.exists():
-            logger.info("Loading gene adjacency graph...")
-            from scipy import sparse
-            # Keep as scipy sparse matrix for now
-            self.adjacency_matrix = sparse.load_npz(adj_file)
-            with open(nodes_file, 'r') as f:
-                self.node_mapping = json.load(f)
-            logger.info(f"Loaded adjacency matrix (scipy): {self.adjacency_matrix.shape}")
+        if val_graphs:
+            self.val_loader = PyGDataLoader(
+                val_graphs,
+                batch_size=self.batch_size,
+                shuffle=False,
+                num_workers=num_workers
+            )
         else:
-            logger.warning(f"Graph files not found in {graph_dir}, proceeding without graph")
-            self.adjacency_matrix = None
-            self.node_mapping = None
+            self.val_loader = None
 
-    def _harmonize_genes(self):
-        if self.adjacency_matrix is None or self.node_mapping is None:
-            logger.info("No graph specified, skipping gene harmonization.")
-            self.adjacency_matrix = None
-            return
+        # Set input_dim from the first graph
+        self.input_dim = train_graphs[0].num_node_features
+        self.num_genes = train_graphs[0].num_nodes
 
-        logger.info("Harmonizing genes between data and graph...")
-
-        graph_genes = list(self.node_mapping.values())
-        data_genes = self.adata_train.var_names.tolist()
-
-        if set(data_genes) == set(graph_genes):
-            logger.info("Genes are already harmonized.")
-        else:
-            common_genes = [gene for gene in data_genes if gene in graph_genes]
-            if not common_genes:
-                raise TrainingError("No common genes found between data and graph.")
-
-            logger.info(f"Found {len(common_genes)} common genes.")
-            
-            # Subset graph to common genes, in the order of data_genes
-            gene_to_idx_graph = {gene: i for i, gene in enumerate(graph_genes)}
-            
-            # Filter data_genes to only include those present in the graph
-            data_genes_in_graph = [gene for gene in data_genes if gene in gene_to_idx_graph]
-            
-            if len(data_genes_in_graph) != len(data_genes):
-                logger.warning(f"Data contains genes not in graph. Subsetting data to {len(data_genes_in_graph)} genes.")
-                # This would require subsetting adata and recreating dataloaders.
-                # For this fix, we assume the processing script already handled this.
-                pass
-
-            indices = [gene_to_idx_graph[gene] for gene in data_genes_in_graph]
-            self.adjacency_matrix = self.adjacency_matrix[indices, :][:, indices]
-
-        # Convert to torch sparse tensor
-        coo = self.adjacency_matrix.tocoo()
-        indices = torch.from_numpy(np.vstack((coo.row, coo.col))).long()
-        values = torch.from_numpy(coo.data).float()
-        shape = torch.Size(coo.shape)
-        self.adjacency_matrix = torch.sparse_coo_tensor(indices, values, shape).to(self.device)
-        
-        self.graph_gene_idx = None
-        
-        if self.adjacency_matrix.shape[0] != self.input_dim:
-            logger.warning(f"Input dimension ({self.input_dim}) does not match harmonized graph dimension ({self.adjacency_matrix.shape[0]}). Adjusting input dimension.")
-            self.input_dim = self.adjacency_matrix.shape[0]
-
-        logger.info(f"Successfully harmonized graph. Final matrix shape: {self.adjacency_matrix.shape}")
+        logger.info(f"Created PyG data loaders - Input dim: {self.input_dim}, Num genes: {self.num_genes}")
+        logger.info(f"Train batches: {len(self.train_loader)}, Val batches: {len(self.val_loader) if self.val_loader else 0}")
 
     def initialize_model(self) -> None:
         logger.info("Initializing DiscrepancyVAE model...")
 
+        # The adjacency matrix is now part of the data batch, so we pass None here.
+        # The model needs to be adapted to receive the graph structure from the batch.
         self.model = DiscrepancyVAE(
-            input_dim=self.input_dim,
+            input_dim=self.num_genes, # or self.input_dim depending on model design
             config=self.model_config,
-            adjacency_matrix=self.adjacency_matrix,
-            graph_gene_idx=self.graph_gene_idx
+            adjacency_matrix=None,
+            graph_gene_idx=None
         )
 
         self.model.to(self.device)
@@ -311,13 +246,18 @@ class ModelTrainer:
                     dynamic_ncols=True)
 
         for batch_idx, batch in enumerate(self.train_loader):
-            x = batch['x'].to(self.device)
-            is_control = batch['is_control'].to(self.device)
-            perturbation_labels = batch['perturbation_label'].to(self.device)
+            batch = batch.to(self.device)
+            # The model now needs to handle the PyG Batch object
+            x = batch.x
+            is_control = batch.is_control
+
+            # The model needs to be adapted to get perturbation info from the batch
+            perturbation_labels = None # Placeholder
 
             self.optimizer.zero_grad()
 
-            model_output = self.model(x)
+            # The model call needs to be adapted for graph data
+            model_output = self.model(batch)
 
             loss_dict = self.model.compute_loss(
                 x, model_output, is_control, perturbation_labels
@@ -339,10 +279,10 @@ class ModelTrainer:
             if batch_idx % 10 == 0:  # Update postfix every 10 batches
                 pbar.set_postfix({
                     'L': f"{total_loss.item():.0f}",
-                    'RL': f"{loss_dict['reconstruction_loss'].item():.0f}",
-                    'KL': f"{loss_dict['kl_loss'].item():.0f}",
-                    'DL': f"{loss_dict['discrepancy_loss'].item():.0f}",
-                    'GL': f"{loss_dict['graph_reg_loss'].item():.2f}"
+                    'RL': f"{loss_dict.get('reconstruction_loss', 0):.0f}",
+                    'KL': f"{loss_dict.get('kl_loss', 0):.0f}",
+                    'DL': f"{loss_dict.get('discrepancy_loss', 0):.0f}",
+                    'GL': f"{loss_dict.get('graph_reg_loss', 0):.2f}"
                 })
 
         pbar.close()
@@ -360,11 +300,12 @@ class ModelTrainer:
 
         with torch.no_grad():
             for batch in tqdm(self.val_loader, desc='Validation', position=0, leave=True):
-                x = batch['x'].to(self.device)
-                is_control = batch['is_control'].to(self.device)
-                perturbation_labels = batch['perturbation_label'].to(self.device)
+                batch = batch.to(self.device)
+                x = batch.x
+                is_control = batch.is_control
+                perturbation_labels = None # Placeholder
 
-                model_output = self.model(x)
+                model_output = self.model(batch)
 
                 loss_dict = self.model.compute_loss(
                     x, model_output, is_control, perturbation_labels

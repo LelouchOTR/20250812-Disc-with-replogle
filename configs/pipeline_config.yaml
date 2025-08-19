@@ -100,16 +100,18 @@ execution:
   # Pipeline steps to run
   steps_to_run:                         # List of pipeline steps to execute
     - "ingest"
-    - "process" 
+    - "process"
     - "graphs"
+    - "generate_cell_graphs"
     - "train"
     - "evaluate"
   
   # Step dependencies
   step_dependencies:                    # Dependencies between pipeline steps
     process: ["ingest"]
-    graphs: ["process"]
-    train: ["process", "graphs"]
+    # 'graphs' can run after ingest.
+    generate_cell_graphs: ["process", "graphs"]
+    train: ["generate_cell_graphs"]
     evaluate: ["train"]
   
   # Execution mode

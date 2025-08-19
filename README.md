@@ -27,6 +27,29 @@ The "biological hint" given to the model is a graph representing known functiona
 
 This graph is then fed into the GCN encoder of the DiscrepancyVAE, providing a strong biological prior that guides the model's learning process.
 
+### How Our Approach Compares to GEARS: A Tale of Two Maps
+
+Both our project and the well-known GEARS model use gene networks to understand perturbation effects, but we do so in fundamentally different ways. Think of it as the difference between using a detailed, static atlas versus a dynamic, real-time GPS.
+
+**Our Approach: The Comprehensive Atlas**
+
+In this project, we first build a single, comprehensive "atlas" of the gene world. This graph is a rich, static map of all known functional relationships between genes, based on decades of curated biological knowledge from the Gene Ontology.
+
+Our Discrepancy VAE model then takes the single-cell data from our experiment and "plots" it onto this master map. By using a **Graph Convolutional Network (GCN)**, the model is forced to consider the known relationships between genes as it learns. This provides a stable, global context, allowing the model to learn a single, consistent "discrepancy vector" for each perturbation. The result is a highly interpretable and robust view of how each gene fits into the broader landscape of cellular biology.
+
+**The GEARS Approach: The Real-Time GPS**
+
+GEARS, in contrast, acts more like a "GPS" for each individual cell. Instead of starting with one big map, it constructs a unique, smaller graph for *every single cell* in the dataset. This graph represents the specific gene network that is active in that cell at that moment.
+
+It then models a perturbation as a signal that propagates through this individualized, dynamic network. This makes GEARS exceptionally powerful for predicting the precise outcome of a perturbation within the unique context of a single cell.
+
+**The Core Difference**
+
+*   **Our Method:** Uses one **static, knowledge-rich graph** to provide a stable biological "scaffold" for interpreting experimental data. It excels at creating a robust and interpretable global map of gene function.
+*   **GEARS' Method:** Uses many **dynamic, cell-specific graphs** to predict the effects of perturbations in a highly context-aware manner. It excels at predictive accuracy at the single-cell level.
+
+By providing our Discrepancy VAE with a single, stable biological atlas, we guide it to learn the fundamental, context-independent roles of genes, which is the primary goal of this project.
+
 ## 📊 Interpreting the Output: The UMAP Plot
 
 The main result is a UMAP plot, which is a 2D picture of the cell map the model learned. Each dot is a cell, and it gives you a bird's-eye view of your whole experiment.
