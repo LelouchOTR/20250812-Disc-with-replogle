@@ -32,15 +32,15 @@ training:
   weight_decay: 1e-5                     # L2 regularization weight decay
 
   # Training schedule
-  epochs: 50                          # Maximum number of training epochs
-  warmup_epochs: 5                      # Number of warmup epochs
+  epochs: 1                          # Maximum number of training epochs
+  warmup_epochs: 1                      # Number of warmup epochs
 
   # Learning rate scheduling
   scheduler:
     enabled: true
     type: "cosine"                 # LR scheduler: "cosine", "step", "exponential", "plateau"
     params:
-      T_max: 50                          # For cosine scheduler
+      T_max: 1                          # For cosine scheduler
       eta_min: 1e-6                       # Minimum learning rate
 
   # Early stopping
