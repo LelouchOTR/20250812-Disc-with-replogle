@@ -66,6 +66,7 @@ def create_run_dirs(config: dict, args) -> dict:
         'raw': run_root / 'raw',
         'processed': run_root / 'processed',
         'graphs': run_root / 'graphs',
+        'cell_graphs': run_root / 'cell_graphs',
         'models': run_root / 'models',
         'evaluation': run_root / 'evaluation',
         'logs': run_root / 'logs',
@@ -217,6 +218,25 @@ def run_graphs(config: dict, run_dirs: dict, seed: int):
     logger.info(f"--- Graph Generation Step Complete (output: {output_dir}) ---")
 
 
+def run_cell_graphs(config: dict, run_dirs: dict, seed: int):
+    """Run the cell-specific graph generation step."""
+    logger.info("--- Running Cell-Specific Graph Generation Step ---")
+    # The run_id is derived from the run_dir path
+    run_dir = Path(run_dirs['raw']).parent
+    run_id = run_dir.name
+    base_output_dir = run_dir.parent
+
+    cmd = [
+        "python", "scripts/03b_generate_cell_graphs.py",
+        "--run-id", run_id,
+        "--config", "cell_graph_config",
+        "--base-output-dir", str(base_output_dir),
+        "--seed", str(seed)
+    ]
+    run_step(cmd)
+    logger.info(f"--- Cell-Specific Graph Generation Step Complete (output: {run_dirs.get('cell_graphs')}) ---")
+
+
 def run_train(config: dict, run_dirs: dict, seed: int):
     """Run the model training step."""
     logger.info("--- Running Training Step ---")
@@ -271,7 +291,7 @@ def main():
     parser.add_argument(
         "steps",
         nargs='+',
-        choices=['all', 'ingest', 'process', 'graphs', 'train', 'evaluate'],
+        choices=['all', 'ingest', 'process', 'graphs', 'cell_graphs', 'train', 'evaluate'],
         help="Pipeline steps to run."
     )
     parser.add_argument("--config", type=str, default="pipeline_config",
@@ -306,7 +326,7 @@ def main():
 
     steps_to_run = args.steps
     if 'all' in steps_to_run:
-        steps_to_run = ['ingest', 'graphs', 'process', 'train', 'evaluate']
+        steps_to_run = ['ingest', 'graphs', 'process', 'cell_graphs', 'train', 'evaluate']
 
     logger.info(f"Running pipeline with steps: {', '.join(steps_to_run)}")
 
@@ -317,6 +337,8 @@ def main():
             run_process(config, run_dirs, args.seed)
         elif step == 'graphs':
             run_graphs(config, run_dirs, args.seed)
+        elif step == 'cell_graphs':
+            run_cell_graphs(config, run_dirs, args.seed)
         elif step == 'train':
             run_train(config, run_dirs, args.seed)
         elif step == 'evaluate':

@@ -67,7 +67,7 @@ feature_selection:
 # Output paths and file organization
 output_paths:
   # Base directories
-  base_output_dir: "/data/gidb/shared/results/tmp/replogle/"            # Base output directory
+  base_output_dir: "outputs/"            # Base output directory
   models_dir: "outputs/models"          # Directory for trained models
   evaluation_dir: "outputs/evaluation"  # Directory for evaluation results
   figures_dir: "outputs/figures"        # Directory for generated figures

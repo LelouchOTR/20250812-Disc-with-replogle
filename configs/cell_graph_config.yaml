@@ -1,36 +1,10 @@
-# Configuration for cell-level graph generation
-# Defines inputs, outputs, and parameters for creating PyG Data objects for each cell.
+# Configuration for cell-specific graph generation (03b_generate_cell_graphs.py)
 
-# Input data paths
-# These are typically outputs from previous pipeline steps.
-input:
-  # Path to the processed AnnData object (.h5ad file) from 02_process.py
-  processed_adata_path: "${DATA_DIR:data}/processed/processed_data.h5ad"
+# Key to identify control perturbations in the 'condition' column of AnnData.
+# This is used to set the 'is_control' flag in the PyG Data objects.
+control_key: "ctrl"
 
-  # Path to the static gene-gene graph (.pkl file) from 03_graphs.py
-  gene_graph_path: "${DATA_DIR:data}/graphs/gene_adjacency_graph.pkl"
-
-# Output configuration
-output:
-  # Directory to save the generated cell graph files
-  output_dir: "${DATA_DIR:data}/cell_graphs"
-
-  # Filename for the saved list of PyG Data objects
-  output_filename: "cell_graphs.pkl"
-
-# Graph construction parameters
-parameters:
-  # Whether to include edge weights (if they exist in the source graph)
-  include_edge_weights: true
-
-  # Additional cell metadata to include in each Data object
-  # These must be columns in the AnnData.obs dataframe.
-  metadata_to_include:
-    - "guide_identity"
-    - "is_control"
-    - "split"
-
-# Performance settings
-performance:
-  # This script is not very compute-intensive, but these are placeholders
-  n_jobs: 1
+# Future parameters could be added here, for example:
+# - Options for different ways to construct the edge_index
+# - Subsampling strategies for large datasets
+# - Additional metadata to include in the graph objects

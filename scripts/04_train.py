@@ -95,9 +95,6 @@ class ModelTrainer:
         self.train_loader = None
         self.val_loader = None
         self.writer = None
-        self.adjacency_matrix = None
-        self.graph_gene_idx = None
-        self.graph_gene_mask = None
 
         self.start_epoch = 0
         self.train_history = defaultdict(list)
@@ -163,10 +160,8 @@ class ModelTrainer:
         # The adjacency matrix is now part of the data batch, so we pass None here.
         # The model needs to be adapted to receive the graph structure from the batch.
         self.model = DiscrepancyVAE(
-            input_dim=self.num_genes, # or self.input_dim depending on model design
-            config=self.model_config,
-            adjacency_matrix=None,
-            graph_gene_idx=None
+            input_dim=self.num_genes,
+            config=self.model_config
         )
 
         self.model.to(self.device)
@@ -251,17 +246,11 @@ class ModelTrainer:
             x = batch.x
             is_control = batch.is_control
 
-            # The model needs to be adapted to get perturbation info from the batch
-            perturbation_labels = None # Placeholder
-
             self.optimizer.zero_grad()
 
-            # The model call needs to be adapted for graph data
             model_output = self.model(batch)
 
-            loss_dict = self.model.compute_loss(
-                x, model_output, is_control, perturbation_labels
-            )
+            loss_dict = self.model.compute_loss(batch, model_output)
 
             total_loss = loss_dict['total_loss']
 
@@ -301,15 +290,9 @@ class ModelTrainer:
         with torch.no_grad():
             for batch in tqdm(self.val_loader, desc='Validation', position=0, leave=True):
                 batch = batch.to(self.device)
-                x = batch.x
-                is_control = batch.is_control
-                perturbation_labels = None # Placeholder
-
                 model_output = self.model(batch)
 
-                loss_dict = self.model.compute_loss(
-                    x, model_output, is_control, perturbation_labels
-                )
+                loss_dict = self.model.compute_loss(batch, model_output)
 
                 for key, value in loss_dict.items():
                     epoch_losses[key].append(value.item())
@@ -541,13 +524,10 @@ class ModelTrainer:
 def main():
     parser = argparse.ArgumentParser(description="Train DiscrepancyVAE model")
     parser.add_argument("--config", type=str, default="model_config", help="Configuration file name")
-    parser.add_argument("--data-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/processed",
-                        help="Processed data directory")
-    parser.add_argument("--graph-dir", type=str, help="Gene adjacency graph directory")
-    parser.add_argument("--output-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/models",
-                        help="Output directory")
-    parser.add_argument("--log-dir", type=str, default="/data/gidb/shared/results/tmp/replogle/logs",
-                        help="Log directory")
+    parser.add_argument("--cell-graph-dir", type=str, required=True,
+                        help="Directory containing cell_graphs.pkl.")
+    parser.add_argument("--output-dir", type=str, required=True, help="Output directory for models.")
+    parser.add_argument("--log-dir", type=str, required=True, help="Log directory.")
     parser.add_argument("--device", type=str, help="Device to use (cuda/cpu)")
     parser.add_argument("--seed", type=int, default=42, help="Random seed")
     parser.add_argument("--resume", type=str, help="Resume training from checkpoint")
@@ -602,18 +582,14 @@ def main():
         logger.info(f"Overriding dropout_rate with command-line value: {args.dropout_rate}")
 
     logger.info("Starting DiscrepancyVAE training pipeline")
-    logger.info(f"Data directory: {args.data_dir}")
+    logger.info(f"Cell graph directory: {args.cell_graph_dir}")
     logger.info(f"Output directory: {args.output_dir}")
 
     try:
-        trainer = ModelTrainer(config, args.output_dir, args.log_dir, device)
+        trainer = ModelTrainer(config, Path(args.output_dir), Path(args.log_dir), device)
 
-        trainer.load_data(args.data_dir)
-
-        if args.graph_dir:
-            trainer.load_graph(args.graph_dir)
-        
-        trainer._harmonize_genes()
+        cell_graph_path = Path(args.cell_graph_dir) / 'cell_graphs.pkl'
+        trainer.load_data(cell_graph_path)
 
         trainer.initialize_model()
 

@@ -509,17 +509,18 @@ class DiscrepancyVAE(nn.Module):
             control_z = z[control_mask]
             perturbed_z = z[perturbed_mask]
             
-            # This needs to be adapted based on how perturbation info is stored
-            perturbation_labels = getattr(data, 'perturbation', None)
-            if perturbation_labels is not None:
-                # This assumes perturbation is a numeric label. If it's a string, it needs mapping.
-                # For now, we'll assume it can be handled.
-                pert_labels_numeric = pd.Categorical(np.array(perturbation_labels)[perturbed_mask]).codes
-                perturbed_labels_tensor = torch.tensor(pert_labels_numeric, device=z.device)
+            # Use the pre-computed numeric perturbation labels from data.y
+            if hasattr(data, 'y'):
+                # Squeeze to make sure it's a 1D tensor if it's not already
+                all_labels = data.y.squeeze(-1) if data.y.ndim > 1 else data.y
+                perturbed_labels_tensor = all_labels[perturbed_mask]
 
                 discrepancy_loss = self.compute_discrepancy_loss(
                     control_z, perturbed_z, perturbed_labels_tensor
                 )
+            else:
+                logger.warning("`data.y` not found. Skipping discrepancy loss calculation.")
+                discrepancy_loss = torch.tensor(0.0, device=z.device)
         
         # Total loss
         total_loss = (
@@ -693,13 +694,13 @@ def get_model_summary(model: DiscrepancyVAE) -> str:
 
 if __name__ == "__main__":
     # Example usage
-    import yaml
-    
+    from torch_geometric.loader import DataLoader as PyGDataLoader
+
     # Example configuration
     config = {
         'model_params': {
             'latent_dim': 32,
-            'hidden_dims': [512, 256],
+            'hidden_dims': [128, 64],
             'dropout_rate': 0.1,
             'batch_norm': True,
             'activation': 'relu',
@@ -709,26 +710,52 @@ if __name__ == "__main__":
             'beta': 1.0,
             'discrepancy_weight': 1.0,
             'reconstruction_loss': 'mse',
-            'graph_reg_weight': 0.1
         }
     }
     
-    # Create model
-    input_dim = 2000  # Example: 2000 genes
-    adj = torch.ones(input_dim, input_dim) # Dummy adjacency matrix
-    model = DiscrepancyVAE(input_dim=input_dim, config=config, adjacency_matrix=adj)
+    # Create a dummy model
+    input_dim = 100  # 100 genes
+    model = DiscrepancyVAE(input_dim=input_dim, config=config)
     
     # Print model summary
     print(get_model_summary(model))
     
+    # Create some dummy PyG data
+    num_nodes = 100
+    num_edges = 300
+    num_cells = 10
+
+    edge_index = torch.randint(0, num_nodes, (2, num_edges), dtype=torch.long)
+
+    data_list = []
+    for i in range(num_cells):
+        x = torch.randn(num_nodes, 1) # Node features for one cell
+        is_control = i < 5 # First 5 are control
+        pert_label = 0 if is_control else (i - 4)
+
+        data = Data(x=x, edge_index=edge_index, y=torch.tensor([pert_label]),
+                    is_control=torch.tensor([is_control]))
+        data_list.append(data)
+
+    # Create a PyG DataLoader
+    loader = PyGDataLoader(data_list, batch_size=5)
+
+    # Get one batch
+    batch = next(iter(loader))
+
+    print(f"\n--- Testing forward pass with PyG Batch ---")
+    print(f"Batch object: {batch}")
+
     # Test forward pass
-    batch_size = 32
-    x = torch.randn(batch_size, input_dim)
+    model.train()
+    output = model(batch)
     
-    model.eval()
-    with torch.no_grad():
-        output = model(x)
-        print(f"\nTest forward pass:")
-        print(f"Input shape: {x.shape}")
-        print(f"Reconstruction shape: {output['x_recon'].shape}")
-        print(f"Latent shape: {output['z'].shape}")
+    print(f"\nModel Output:")
+    print(f"Reconstruction shape: {output['x_recon'].shape}")
+    print(f"Latent shape: {output['z'].shape}")
+
+    # Test loss computation
+    losses = model.compute_loss(batch, output)
+    print(f"\nComputed Losses:")
+    for key, val in losses.items():
+        print(f"  {key}: {val.item():.4f}")
