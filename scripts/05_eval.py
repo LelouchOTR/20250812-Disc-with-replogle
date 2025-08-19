@@ -61,6 +61,16 @@ class ModelEvaluator:
         self.plots_dir = self.output_dir / "plots"
         self.plots_dir.mkdir(parents=True, exist_ok=True)
         
+        # Initialize instance variables
+        self.model = None
+        self.adata_test = None
+        self.latent_embeddings = None
+        self.metrics = {}
+        self.perturbation_results = None
+        self.adjacency_matrix = None
+        self.node_mapping = None
+        self.scaler = None
+        
         # Initialize visualizer
         self.visualizer = LatentSpaceVisualizer(self.plots_dir)
         
@@ -77,16 +87,6 @@ class ModelEvaluator:
         
         # Add to root logger
         logging.getLogger().addHandler(file_handler)
-        
-        # Initialize instance variables
-        self.model = None
-        self.adata_test = None
-        self.latent_embeddings = None
-        self.metrics = {}
-        self.perturbation_results = None
-        self.adjacency_matrix = None
-        self.node_mapping = None
-        self.scaler = None
         
         logger.info(f"Initialized ModelEvaluator with output dir: {self.output_dir}")
         logger.info(f"Using device: {self.device}")
