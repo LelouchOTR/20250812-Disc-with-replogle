@@ -6,49 +6,27 @@ Welcome! This project is all about making sense of large-scale, single-cell CRIS
 
 Our main goal is to understand the impact of genetic perturbations: which genes matter, how strong their effects are, and how they work together in functional pathways.
 
-## 🧠 How it Works: The Model
+## 🧠 A GEARS-inspired, Graph-based Approach
 
-Think of the model as a **"smart biological detective"** that learns about your cells in three ways:
+This project leverages a graph-based variational autoencoder (VAE) to decipher the complex transcriptional effects of genetic perturbations. Our methodology is heavily inspired by the GEARS framework, where each cell is modeled as an individual graph, allowing the model to learn perturbation effects within the context of each cell's unique transcriptional state.
 
-*   **🗺️ The Cell Map:** It first learns to draw a "map" where cells with similar biology are placed close together. This map is technically a 32-dimensional "latent space."
+### Graph Construction: From Blueprint to Cell-Specific Instances
 
-*   **🔬 The Perturbation Effect:** It then figures out how each genetic perturbation "moves" a cell on this map. It learns a "discrepancy vector"—an arrow pointing from the normal cell state to the perturbed state. The length and direction of the arrow tell you the strength and type of the effect.
+Our graph construction is a two-step process that combines a static, knowledge-based blueprint with dynamic, cell-specific data:
 
-*   **🕸️ The Biological Hint (Graph Integration):** To make the map more biologically meaningful, we provide the model with a gene-gene interaction network. The model's encoder is a **Graph Convolutional Network (GCN)** that processes this graph directly. This allows the model to learn from the connections between genes, encouraging genes that are functionally related to have similar representations. A **graph Laplacian regularization** term in the loss function further reinforces this, ensuring that connected genes are mapped closely together in the latent space.
+1.  **The Biological Blueprint (Gene Ontology Network):** We first construct a high-quality, global gene-gene interaction network using the Gene Ontology (GO). In this network, genes are nodes, and an edge between them signifies a shared biological function, calculated using Jaccard similarity on their GO term annotations. This network serves as a robust, static "blueprint" of known biological relationships.
 
-## 🌐 The Gene-Gene Interaction Graph
+2.  **Cell-Specific Graphs:** For each cell in our single-cell dataset, we then create a unique graph instance. The topology of this graph—its connections or `edge_index`—is inherited directly from our GO blueprint. However, the node features (`x`) are the cell's actual gene expression values. This creates a powerful representation where each cell is a graph, grounded in biological reality but specific to its own state.
 
-The "biological hint" given to the model is a graph representing known functional relationships between genes. Here's how it's built:
+### The Discrepancy VAE Model
 
-1.  **Data Source:** We use the **Gene Ontology (GO)** database, a comprehensive resource of gene functions.
-2.  **Term Filtering:** We filter GO terms to select those that are most informative, based on the number of genes they annotate and their specificity.
-3.  **Similarity Calculation:** For every pair of genes, we calculate a **Jaccard similarity score** based on the GO terms they share. A high score means two genes are involved in many of the same biological processes.
-4.  **Graph Construction:** We create a network where each gene is a node. An edge is drawn between two genes if their similarity score is above a predefined threshold. This results in a graph where connected genes are likely to be functionally related.
+The core of our project is a Discrepancy VAE that learns from this rich, graph-based data:
 
-This graph is then fed into the GCN encoder of the DiscrepancyVAE, providing a strong biological prior that guides the model's learning process.
+-   **Graph-Aware Encoder:** The model's encoder is a **Graph Convolutional Network (GCN)**. For each cell, it processes the graph of gene expression values, respecting the underlying biological network structure. This produces a low-dimensional "latent representation" of each cell that is inherently graph-aware.
 
-### How Our Approach Compares to GEARS: A Tale of Two Maps
+-   **Discrepancy Learning:** The VAE is trained to map these latent representations to a space where the vector difference between a perturbed cell and its control counterparts—the "discrepancy vector"—accurately captures the magnitude and direction of the perturbation's effect.
 
-Both our project and the well-known GEARS model use gene networks to understand perturbation effects, but we do so in fundamentally different ways. Think of it as the difference between using a detailed, static atlas versus a dynamic, real-time GPS.
-
-**Our Approach: The Comprehensive Atlas**
-
-In this project, we first build a single, comprehensive "atlas" of the gene world. This graph is a rich, static map of all known functional relationships between genes, based on decades of curated biological knowledge from the Gene Ontology.
-
-Our Discrepancy VAE model then takes the single-cell data from our experiment and "plots" it onto this master map. By using a **Graph Convolutional Network (GCN)**, the model is forced to consider the known relationships between genes as it learns. This provides a stable, global context, allowing the model to learn a single, consistent "discrepancy vector" for each perturbation. The result is a highly interpretable and robust view of how each gene fits into the broader landscape of cellular biology.
-
-**The GEARS Approach: The Real-Time GPS**
-
-GEARS, in contrast, acts more like a "GPS" for each individual cell. Instead of starting with one big map, it constructs a unique, smaller graph for *every single cell* in the dataset. This graph represents the specific gene network that is active in that cell at that moment.
-
-It then models a perturbation as a signal that propagates through this individualized, dynamic network. This makes GEARS exceptionally powerful for predicting the precise outcome of a perturbation within the unique context of a single cell.
-
-**The Core Difference**
-
-*   **Our Method:** Uses one **static, knowledge-rich graph** to provide a stable biological "scaffold" for interpreting experimental data. It excels at creating a robust and interpretable global map of gene function.
-*   **GEARS' Method:** Uses many **dynamic, cell-specific graphs** to predict the effects of perturbations in a highly context-aware manner. It excels at predictive accuracy at the single-cell level.
-
-By providing our Discrepancy VAE with a single, stable biological atlas, we guide it to learn the fundamental, context-independent roles of genes, which is the primary goal of this project.
+By modeling each cell as a graph, our Discrepancy VAE learns a nuanced, systems-level understanding of gene function and perturbation response, moving beyond simple gene expression to capture the interplay between genes in a network context.
 
 ## 📊 Interpreting the Output: The UMAP Plot
 
